@@ -15,65 +15,65 @@
 
 Para a decisão de irrigar um vaso, serão utilizados dois eventos diferentes:
 
-1. **`SoilMoistureMeasured`**: registra uma medição da umidade do substrato de um vaso.
-2. **`AmbientConditionsMeasured`**: registra temperatura, umidade relativa do ar e luminosidade próximas ao vaso.
+1. **`UmidadeSoloMedida`**: registra uma medição da umidade do substrato de um vaso.
+2. **`CondicoesAmbientaisMedidas`**: registra temperatura, umidade relativa do ar e luminosidade próximas ao vaso.
 
 O primeiro evento representa diretamente a disponibilidade de água no substrato. O segundo representa condições que podem acelerar ou reduzir sua perda. Embora ambos possam ser publicados pelo mesmo ESP32, correspondem a ocorrências e sensores diferentes.
 
 ### 2. Contrato dos eventos
 
-#### Evento `SoilMoistureMeasured`
+#### Evento `UmidadeSoloMedida`
 
 | Elemento | Definição |
 |---|---|
 | Produtor | ESP32, a partir do higrômetro capacitivo |
-| Entidade observada | Substrato do vaso identificado por `potId` |
-| Tempo do evento | `eventTime`, instante ISO 8601 com fuso horário em que a amostra foi obtida |
-| Identificação | `eventId` único e `sequence` crescente por dispositivo |
-| Campos | `eventType`, `eventId`, `deviceId`, `sensorId`, `potId`, `eventTime`, `sequence`, `moisture`, `unit` |
+| Entidade observada | Substrato do vaso identificado por `idVaso` |
+| Tempo do evento | `tempoEvento`, instante ISO 8601 com fuso horário em que a amostra foi obtida |
+| Identificação | `idEvento` único e `sequencia` crescente por dispositivo |
+| Campos | `tipoEvento`, `idEvento`, `idDispositivo`, `idSensor`, `idVaso`, `tempoEvento`, `sequencia`, `umidadeSolo`, `unidade` |
 | Unidade | Umidade normalizada em `%` |
 
-#### Evento `AmbientConditionsMeasured`
+#### Evento `CondicoesAmbientaisMedidas`
 
 | Elemento | Definição |
 |---|---|
 | Produtor | ESP32, a partir dos sensores DHT e BH1750 |
-| Entidade observada | Microambiente do vaso identificado por `potId` |
-| Tempo do evento | `eventTime`, instante ISO 8601 com fuso horário em que as amostras foram obtidas |
-| Identificação | `eventId` único e `sequence` crescente por dispositivo |
-| Campos | `eventType`, `eventId`, `deviceId`, `potId`, `eventTime`, `sequence`, `temperature`, `airHumidity`, `illuminance` e respectivas unidades |
+| Entidade observada | Microambiente do vaso identificado por `idVaso` |
+| Tempo do evento | `tempoEvento`, instante ISO 8601 com fuso horário em que as amostras foram obtidas |
+| Identificação | `idEvento` único e `sequencia` crescente por dispositivo |
+| Campos | `tipoEvento`, `idEvento`, `idDispositivo`, `idVaso`, `tempoEvento`, `sequencia`, `temperatura`, `umidadeAr`, `iluminancia` e respectivas unidades |
 | Unidades | Temperatura em `°C`, umidade relativa em `%` e iluminância em `lx` |
 
 ### 3. Exemplos válidos
 
 ```json
 {
-  "eventType": "SoilMoistureMeasured",
-  "eventId": "esp32-01:1842:soil-01",
-  "deviceId": "esp32-01",
-  "sensorId": "soil-01",
-  "potId": "pot-calanchoe-01",
-  "eventTime": "2026-08-28T19:14:32-03:00",
-  "sequence": 1842,
-  "moisture": 27.4,
-  "unit": "%"
+  "tipoEvento": "UmidadeSoloMedida",
+  "idEvento": "esp32-01:1842:solo-01",
+  "idDispositivo": "esp32-01",
+  "idSensor": "solo-01",
+  "idVaso": "vaso-calanchoe-01",
+  "tempoEvento": "2026-08-28T19:14:32-03:00",
+  "sequencia": 1842,
+  "umidadeSolo": 27.4,
+  "unidade": "%"
 }
 ```
 
 ```json
 {
-  "eventType": "AmbientConditionsMeasured",
-  "eventId": "esp32-01:1843:ambient-01",
-  "deviceId": "esp32-01",
-  "potId": "pot-calanchoe-01",
-  "eventTime": "2026-08-28T19:14:35-03:00",
-  "sequence": 1843,
-  "temperature": 31.2,
-  "temperatureUnit": "C",
-  "airHumidity": 38.0,
-  "airHumidityUnit": "%",
-  "illuminance": 18400,
-  "illuminanceUnit": "lx"
+  "tipoEvento": "CondicoesAmbientaisMedidas",
+  "idEvento": "esp32-01:1843:ambiente-01",
+  "idDispositivo": "esp32-01",
+  "idVaso": "vaso-calanchoe-01",
+  "tempoEvento": "2026-08-28T19:14:35-03:00",
+  "sequencia": 1843,
+  "temperatura": 31.2,
+  "unidadeTemperatura": "C",
+  "umidadeAr": 38.0,
+  "unidadeUmidadeAr": "%",
+  "iluminancia": 18400,
+  "unidadeIluminancia": "lx"
 }
 ```
 
@@ -82,9 +82,9 @@ O primeiro evento representa diretamente a disponibilidade de água no substrato
 Na borda, cada evento passa pelas seguintes verificações:
 
 - **Validade estrutural:** todos os campos obrigatórios devem existir e possuir o tipo esperado.
-- **Validade física:** `moisture` e `airHumidity` devem estar entre 0 e 100%, a temperatura entre -10 e 60 °C e a iluminância entre 0 e 150.000 lx. Valores fora desses limites são marcados como inválidos e não entram na janela.
-- **Origem:** `deviceId`, `sensorId` e `potId` devem estar cadastrados e associados entre si.
-- **Duplicação:** o identificador `eventId` é armazenado durante 24 horas. Um identificador já observado não é processado novamente. A sequência auxilia a detectar repetição, perda e reinício do dispositivo.
+- **Validade física:** `umidadeSolo` e `umidadeAr` devem estar entre 0 e 100%, a temperatura entre -10 e 60 °C e a iluminância entre 0 e 150.000 lx. Valores fora desses limites são marcados como inválidos e não entram na janela.
+- **Origem:** `idDispositivo`, `idSensor` e `idVaso` devem estar cadastrados e associados entre si.
+- **Duplicação:** o identificador `idEvento` é armazenado durante 24 horas. Um identificador já observado não é processado novamente. A sequência auxilia a detectar repetição, perda e reinício do dispositivo.
 - **Atualidade:** para atuação, a última medição do solo não pode ter mais de 2 minutos e a última medição ambiental não pode ter mais de 5 minutos. Dados mais antigos podem ser enviados ao histórico, mas não autorizam a bomba.
 
 Uma leitura isolada com variação superior a 35 pontos percentuais em relação à mediana recente do mesmo sensor é classificada como suspeita. Ela é separada para diagnóstico e a irrigação fica bloqueada até a chegada de uma leitura válida.
@@ -100,7 +100,7 @@ receber
   → validar contrato, origem, faixa e identificação
   → eliminar duplicações
   → converter/calibrar a leitura bruta para as unidades do contrato
-  → agrupar por potId
+  → agrupar por idVaso
   → inserir na janela correspondente ao tempo do evento
   → calcular médias e manter a leitura válida mais recente
   → detectar necessidade de irrigação
@@ -110,7 +110,7 @@ receber
 
 ### 6. Estado e janela
 
-A regra utiliza uma **janela deslizante de 10 minutos**, avaliada a cada **1 minuto**. Os eventos são agrupados por `potId`.
+A regra utiliza uma **janela deslizante de 10 minutos**, avaliada a cada **1 minuto**. Os eventos são agrupados por `idVaso`.
 
 O estado mantido para cada vaso contém:
 
@@ -137,7 +137,7 @@ A borda admite atraso de até **30 segundos** antes de fechar cada avaliação. 
 
 - não modifica retroativamente uma atuação física já realizada;
 - não dispara uma irrigação imediata, pois pode descrever uma condição que já mudou;
-- recebe a marca `late: true` e é enviado à nuvem para completar o histórico e permitir diagnóstico da comunicação;
+- recebe a marca `atrasado: verdadeiro` e é enviado à nuvem para completar o histórico e permitir diagnóstico da comunicação;
 - se seu tempo ainda estiver dentro da janela na próxima avaliação e ele atender aos critérios de atualidade, poderá participar normalmente dessa nova decisão.
 
 Assim, o histórico preserva a leitura sem transformar um dado tardio em comando inseguro.
@@ -147,10 +147,10 @@ Assim, o histórico preserva a leitura sem transformar um dado tardio em comando
 ```text
 A CADA 1 minuto, PARA CADA vaso:
     agora := relógio local sincronizado
-    solo := eventos SoilMoistureMeasured válidos
-            com eventTime em (agora - 10 minutos, agora]
-    ambiente := eventos AmbientConditionsMeasured válidos
-                com eventTime em (agora - 10 minutos, agora]
+    solo := eventos UmidadeSoloMedida válidos
+            com tempoEvento em (agora - 10 minutos, agora]
+    ambiente := eventos CondicoesAmbientaisMedidas válidos
+                com tempoEvento em (agora - 10 minutos, agora]
 
     SE quantidade(solo) < 3:
         publicar alerta "dados de solo insuficientes"
@@ -167,13 +167,13 @@ A CADA 1 minuto, PARA CADA vaso:
         publicar alerta "dados ambientais desatualizados"
         NÃO usar prioridade climática
 
-    umidadeMedia := média(solo.moisture)
+    umidadeMedia := média(solo.umidadeSolo)
     limiteSeco := configuraçãoDaEspécie.limiteMinimoSolo
     soloSeco := umidadeMedia < limiteSeco
 
     calorESeco := ambiente está atual
-                  E média(ambiente.temperature) >= configuraçãoDaEspécie.limiteCalor
-                  E média(ambiente.airHumidity) <= configuraçãoDaEspécie.limiteArSeco
+                  E média(ambiente.temperatura) >= configuraçãoDaEspécie.limiteCalor
+                  E média(ambiente.umidadeAr) <= configuraçãoDaEspécie.limiteArSeco
 
     esperaCumprida := agora - ultimaIrrigação >= 30 minutos
     seguroParaAtuar := bomba disponível
@@ -182,17 +182,17 @@ A CADA 1 minuto, PARA CADA vaso:
 
     SE soloSeco E seguroParaAtuar:
         duração := calorESeco ? 20 segundos : 15 segundos
-        commandId := identificador único(potId, janela, "irrigar")
-        ligar bomba por no máximo duração usando commandId
+        idComando := identificador único(idVaso, janela, "irrigar")
+        ligar bomba por no máximo duração usando idComando
         registrar ultimaIrrigação, duração, medidas e motivo
-        publicar evento IrrigationPerformed
+        publicar evento IrrigacaoRealizada
     SENÃO SE soloSeco E NÃO seguroParaAtuar:
         publicar alerta com o motivo do bloqueio
     SENÃO:
         manter bomba desligada
 ```
 
-O `commandId` torna o comando idempotente: uma repetição da mesma decisão não liga novamente a bomba.
+O `idComando` torna o comando idempotente: uma repetição da mesma decisão não liga novamente a bomba.
 
 ## Parte 3 — Distribuição e resiliência
 
@@ -204,7 +204,7 @@ Não será utilizada uma camada de névoa neste cenário doméstico, pois há po
 |---|---|---|
 | Amostragem, calibração básica e numeração sequencial | Dispositivo/sensores conectados ao ESP32 | Parâmetros de calibração e sequência atual |
 | Validação, deduplicação, janela, regra, bloqueios de segurança e atuação | Borda (ESP32) | Janelas de 10 minutos, IDs recentes, configuração da espécie e última irrigação |
-| Comunicação entre sensores, rede Wi-Fi e tomada/bomba | Gateway no próprio ESP32 | Fila local de eventos ainda não enviados |
+| Comunicação entre sensores, rede Wi-Fi e tomada/bomba | Concentrador de comunicação no próprio ESP32 | Fila local de eventos ainda não enviados |
 | Cadastro de vasos e espécies, histórico, relatórios, notificações e análise de longo prazo | Nuvem | Perfis, histórico de telemetria, decisões e alertas |
 | Aplicação da configuração recebida da nuvem | Borda | Última versão válida da configuração, persistida localmente |
 
@@ -213,7 +213,7 @@ Não será utilizada uma camada de névoa neste cenário doméstico, pois há po
 1. **Regra e atuação na borda:** irrigar é uma função essencial e não deve depender da latência nem da disponibilidade da internet. O ESP32 está próximo aos sensores e ao atuador, consegue tomar a decisão em tempo previsível e pode desligar a bomba pelo limite local mesmo durante uma falha externa.
 2. **Histórico e análise na nuvem:** relatórios, comparação entre longos períodos e gerenciamento pelo aplicativo exigem mais armazenamento e uma visão conjunta dos vasos. Essas tarefas toleram atraso e aproveitam melhor a capacidade da nuvem, sem aumentar o risco da atuação imediata.
 
-O mesmo ESP32 exerce os papéis de gateway e nó de borda: encaminha dados entre redes e também mantém estado e executa a regra local.
+O mesmo ESP32 exerce os papéis de concentrador de comunicação e nó de borda: encaminha dados entre redes e também mantém estado e executa a regra local.
 
 ### 12. Comportamento diante de falha
 
@@ -227,7 +227,7 @@ Durante a operação offline:
 - o aplicativo e a Alexa deixam de receber informações em tempo real;
 - alterações de configuração ficam indisponíveis até a reconexão;
 - se a configuração local estiver ausente ou corrompida, a irrigação automática é bloqueada e um alerta local é sinalizado;
-- após a reconexão, a nuvem elimina duplicações por `eventId` e `commandId`, aceita os eventos para o histórico e não repete atuações antigas.
+- após a reconexão, a nuvem elimina duplicações por `idEvento` e `idComando`, aceita os eventos para o histórico e não repete atuações antigas.
 
 O serviço, portanto, degrada nas funções remotas, mas preserva localmente a proteção essencial da planta e da bomba.
 
@@ -240,7 +240,7 @@ flowchart LR
         S2[DHT e BH1750<br/>amostragem]
     end
 
-    subgraph E[Borda e gateway — ESP32]
+    subgraph E[Borda e concentrador — ESP32]
         V[Validar, calibrar<br/>e deduplicar]
         J[(Estado por vaso<br/>janela deslizante de 10 min)]
         R[Regra avaliada<br/>a cada 1 min]
@@ -257,8 +257,8 @@ flowchart LR
         N[Aplicativo e notificações]
     end
 
-    S1 -->|SoilMoistureMeasured| V
-    S2 -->|AmbientConditionsMeasured| V
+    S1 -->|UmidadeSoloMedida| V
+    S2 -->|CondicoesAmbientaisMedidas| V
     V --> J
     J --> R
     R -->|comando idempotente| P
