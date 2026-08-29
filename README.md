@@ -26,16 +26,18 @@ Participam do sistema:
 - **Comunicação:** O microcontrolador envia os dados dos sensores ao servidor em nuvem via Wi-Fi (utilizando protocolos MQTT ou HTTP/REST). O servidor em nuvem integra-se aos ecossistemas da Alexa e das tomadas inteligentes através de APIs REST e Webhooks.
 
 **4. Processamento e resposta.** 
-O processamento ocorre remotamente em um backend. O sistema processa os fluxos de telemetria, cruza os valores com a matriz de requisitos da espécie da planta e gera:
+O processamento é distribuído entre o ESP32 e um backend em nuvem. Na borda, o ESP32 valida as leituras, mantém uma janela recente por vaso e executa a regra de irrigação com a última configuração válida da espécie. Na nuvem, o backend armazena o histórico, permite configurar as plantas e produz análises e notificações. O sistema gera:
 - **Atuações automáticas:** Acionamento de tomadas inteligentes para ligar a mini-bomba d'água (irrigação) ou o umidificador de ar.
 - **Recomendações e Alertas:** Notificações proativas via aplicativo e avisos por voz pela Alexa sugerindo ações contextuais (ex.: *"A luminosidade está baixa para o calanchoê há 3 dias. Recomenda-se aproximar o vaso da janela."*).
 
 **5. Risco principal.** 
-**Dependência de conectividade e latência externa.** Como o sistema adota processamento remoto e orquestração de APIs de terceiros (nuvem da Alexa e fabricantes de tomadas inteligentes), qualquer perda de conexão com a internet ou indisponibilidade de serviços externos inviabiliza as atuações automáticas e as notificações, criando o risco de falha na irrigação mesmo com o solo seco.
+**Dependência de conectividade e serviços externos.** A perda da internet ou a indisponibilidade da Alexa e de outros serviços impede notificações e atualizações remotas. Para preservar a função essencial, a regra e os limites de segurança da irrigação são mantidos no ESP32, que continua operando com a última configuração válida e sincroniza os registros após a reconexão.
 
 ---
 
 ## Parte 2 - Modelagem do sistema
+
+> A modelagem detalhada do processamento contínuo, dos eventos, da regra temporal e da distribuição de responsabilidades está registrada em [atividade-02.md](atividade-02.md).
 
 **6. Sensores, atuadores e gateway.** 
 - **Sensores:**
@@ -49,7 +51,7 @@ O processamento ocorre remotamente em um backend. O sistema processa os fluxos d
   - *Microcontrolador (ESP32):* Faz a leitura analógica/digital dos sensores, consolida as medições e encaminha os pacotes de dados pela rede Wi-Fi.
 
 **7. Fluxo do sistema.** 
-`Fenômeno físico (Baixa umidade do solo / Alta luminosidade e calor)` -> `Sensores (Higrômetro, DHT e sensor de luz)` -> `Gateway (ESP32 via Wi-Fi)` -> `Processamento (Backend em nuvem cruza dados e calcula evapotranspiração)` -> `Decisão (Necessidade imediata de irrigação e alerta de ambiente)` -> `Resposta/Atuadores (API aciona tomada da bomba de irrigação + Alexa emite aviso por voz)`.
+`Fenômeno físico (Baixa umidade do solo / Alta luminosidade e calor)` -> `Sensores (Higrômetro, DHT e sensor de luz)` -> `Borda/Gateway (ESP32 valida dados, mantém a janela e decide)` -> `Resposta local (acionamento seguro da bomba)` + `Nuvem (histórico, análises e alertas pelo aplicativo/Alexa)`.
 
 **8. Classificação.** 
 O sistema pode ser classificado como:
