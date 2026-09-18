@@ -1,0 +1,38 @@
+{
+  "_comment": "Configuracao unica do Marco 2, lida pelo broker, pelo simulador e pelo servico. Todo parametro aqui pode ser sobrescrito por variavel de ambiente (ver docs/arquitetura.md, secao 'Alteracao ao vivo'). Editar ESTE arquivo e a forma prevista de alterar o comportamento durante a verificacao.",
+
+  "mqtt": {
+    "url": "mqtt://localhost:1883",
+    "urlLocal": "mqtt://localhost:1883",
+    "urlPublico": "mqtt://broker.hivemq.com:1883",
+    "qos": 1,
+    "brokerPort": 1883
+  },
+
+  "identidade": {
+    "prefixoTopico": "naodenemagua/v1",
+    "vasoId": "vaso-01",
+    "deviceIdSimulador": "sim-vaso-01"
+  },
+
+  "regra": {
+    "_comment": "Limiares e tempos da regra de decisao. Origem: recorte de decisao e atuacao do Marco 1 (histerese) + recorte de estado temporal (validade).",
+    "limiarLiga": 30,
+    "limiarDesliga": 50,
+    "amostrasDebounce": 3,
+    "cooldownMs": 8000,
+    "validadeMs": 10000,
+    "duracaoPulsoMs": 3000,
+    "comandoTtlMs": 5000
+  },
+
+  "simulador": {
+    "intervaloTelemetriaMs": 1500,
+    "intervaloHeartbeatMs": 1500,
+    "umidadeInicial": 60
+  },
+
+  "log": {
+    "arquivoJsonl": "consumidor-servico/eventos.jsonl"
+  }
+}

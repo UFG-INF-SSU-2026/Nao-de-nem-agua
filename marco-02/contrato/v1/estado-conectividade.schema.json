@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/estado-conectividade",
+  "title": "EstadoConectividade v1",
+  "description": "Heartbeat do gateway. Publicado como retained para que qualquer assinante novo conheca o estado corrente, e usado tambem como will message (LWT) para que a queda abrupta do dispositivo seja observavel. Promove o recorte de heartbeat do Marco 1 do log serial para a camada de rede.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventType",
+    "deviceId",
+    "entityId",
+    "bootId",
+    "state"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventId": { "type": "string" },
+    "eventType": { "const": "EstadoConectividade" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "entityId": { "type": "string", "minLength": 1 },
+    "bootId": { "type": "string", "pattern": "^[a-f0-9]{4,16}$" },
+    "eventTimeMs": { "type": "integer", "minimum": 0 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "value": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Milissegundos desde a ultima leitura emitida pelo proprio dispositivo."
+    },
+    "unit": { "const": "ms_desde_ultimo_evento" },
+    "state": {
+      "enum": ["ATIVO", "SILENCIOSO", "OFFLINE"],
+      "description": "ATIVO e SILENCIOSO sao publicados pelo dispositivo. OFFLINE so chega pelo LWT, publicado pelo BROKER quando a conexao termina sem encerramento limpo."
+    },
+    "reason": { "type": "string" }
+  }
+}
