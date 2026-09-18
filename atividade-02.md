@@ -1,273 +1,275 @@
-# Atividade 02 — Processamento e distribuição de responsabilidades
+# Software para Sistemas Ubíquos — Atividade em Grupo 02
+## Processamento e distribuição de responsabilidades
 
-**Disciplina:** Software para Sistemas Ubíquos — UFG
 **Integrantes:**
-
 - Matheus Vieira Mendes Pacheco
 - Davi Duarte Neco
 - Bárbara Nogueira
 
-**Cenário:** monitoramento e irrigação automática de plantas domésticas.
+**Cenário utilizado:** *Nao de nem agua* — sistema de automação residencial para manutenção do microclima, iluminação e irrigação de plantas de interior, descrito na Atividade 01. Arquitetura de referência: sensores por vaso (higrômetro capacitivo de solo, DHT temperatura/umidade do ar, BH1750/LDR luminosidade) conectados a um gateway ESP32, que envia telemetria via Wi-Fi/MQTT a um backend em nuvem. O backend cruza os dados com uma matriz de requisitos por espécie e aciona tomadas inteligentes (bomba d'água, umidificador) e a Alexa, além de notificar o app do usuário.
+
+---
 
 ## Parte 1 — Eventos do sistema
 
 ### 1. Tipos de evento
 
-Para a decisão de irrigar um vaso, serão utilizados dois eventos diferentes:
+Definimos dois tipos de evento, ambos produzidos pelo mesmo gateway (ESP32) instalado em cada vaso, mas representando ocorrências distintas — uma leitura do **substrato** e uma leitura do **microclima** ao redor da planta:
 
-1. **`UmidadeSoloMedida`**: registra uma medição da umidade do substrato de um vaso.
-2. **`CondicoesAmbientaisMedidas`**: registra temperatura, umidade relativa do ar e luminosidade próximas ao vaso.
+1. **`LeituraUmidadeSolo`** — leitura periódica do higrômetro capacitivo, referente ao solo/substrato do vaso.
+2. **`LeituraAmbiente`** — leitura periódica combinada do DHT (temperatura/umidade do ar) e do sensor de luminosidade, referente ao ar e à luz ao redor do vaso.
 
-O primeiro evento representa diretamente a disponibilidade de água no substrato. O segundo representa condições que podem acelerar ou reduzir sua perda. Embora ambos possam ser publicados pelo mesmo ESP32, correspondem a ocorrências e sensores diferentes.
+Essas duas leituras alimentam a mesma decisão (necessidade de irrigação), mas descrevem fenômenos físicos diferentes e têm taxas/relevância de leitura distintas — por isso são modeladas como eventos separados, não como um único evento "telemetria".
 
 ### 2. Contrato dos eventos
 
-#### Evento `UmidadeSoloMedida`
+| Campo | `LeituraUmidadeSolo` | `LeituraAmbiente` |
+|---|---|---|
+| **Nome** | LeituraUmidadeSolo | LeituraAmbiente |
+| **Produtor** | Gateway ESP32 do vaso (`device_id`), lendo o higrômetro capacitivo | Gateway ESP32 do vaso (`device_id`), lendo DHT22 + BH1750 |
+| **Entidade observada** | Substrato/solo do vaso (`vaso_id`) | Microclima ao redor do vaso (`vaso_id`) — ar e luz incidente |
+| **Tempo do evento** | Instante da amostragem no ESP32 (relógio sincronizado por NTP) | Instante da amostragem no ESP32 (relógio sincronizado por NTP) |
+| **Campos** | `umidade_solo_pct`, `tensao_bruta_mv` | `temperatura_c`, `umidade_ar_pct`, `luminosidade_lux` |
+| **Unidade** | % (percentual de saturação calibrado), mV (leitura bruta) | °C, %, lux |
+| **Identificação** | `event_id` (UUID) + `seq_num` (contador monotônico por `device_id`) | `event_id` (UUID) + `seq_num` (contador monotônico por `device_id`) |
 
-| Elemento | Definição |
-|---|---|
-| Produtor | ESP32, a partir do higrômetro capacitivo |
-| Entidade observada | Substrato do vaso identificado por `idVaso` |
-| Tempo do evento | `tempoEvento`, instante ISO 8601 com fuso horário em que a amostra foi obtida |
-| Identificação | `idEvento` único e `sequencia` crescente por dispositivo |
-| Campos | `tipoEvento`, `idEvento`, `idDispositivo`, `idSensor`, `idVaso`, `tempoEvento`, `sequencia`, `umidadeSolo`, `unidade` |
-| Unidade | Umidade normalizada em `%` |
-
-#### Evento `CondicoesAmbientaisMedidas`
-
-| Elemento | Definição |
-|---|---|
-| Produtor | ESP32, a partir dos sensores DHT e BH1750 |
-| Entidade observada | Microambiente do vaso identificado por `idVaso` |
-| Tempo do evento | `tempoEvento`, instante ISO 8601 com fuso horário em que as amostras foram obtidas |
-| Identificação | `idEvento` único e `sequencia` crescente por dispositivo |
-| Campos | `tipoEvento`, `idEvento`, `idDispositivo`, `idVaso`, `tempoEvento`, `sequencia`, `temperatura`, `umidadeAr`, `iluminancia` e respectivas unidades |
-| Unidades | Temperatura em `°C`, umidade relativa em `%` e iluminância em `lx` |
-
-### 3. Exemplos válidos
+### 3. Exemplos
 
 ```json
 {
-  "tipoEvento": "UmidadeSoloMedida",
-  "idEvento": "esp32-01:1842:solo-01",
-  "idDispositivo": "esp32-01",
-  "idSensor": "solo-01",
-  "idVaso": "vaso-calanchoe-01",
-  "tempoEvento": "2026-08-28T19:14:32-03:00",
-  "sequencia": 1842,
-  "umidadeSolo": 27.4,
-  "unidade": "%"
+  "event_type": "LeituraUmidadeSolo",
+  "event_id": "a1b2c3d4-5e6f-47a8-9b0c-1d2e3f4a5b6c",
+  "seq_num": 4821,
+  "device_id": "esp32-vaso-07",
+  "vaso_id": "vaso-07",
+  "timestamp_evento": "2026-09-11T14:32:05-03:00",
+  "umidade_solo_pct": 18.4,
+  "tensao_bruta_mv": 2130
 }
 ```
 
 ```json
 {
-  "tipoEvento": "CondicoesAmbientaisMedidas",
-  "idEvento": "esp32-01:1843:ambiente-01",
-  "idDispositivo": "esp32-01",
-  "idVaso": "vaso-calanchoe-01",
-  "tempoEvento": "2026-08-28T19:14:35-03:00",
-  "sequencia": 1843,
-  "temperatura": 31.2,
-  "unidadeTemperatura": "C",
-  "umidadeAr": 38.0,
-  "unidadeUmidadeAr": "%",
-  "iluminancia": 18400,
-  "unidadeIluminancia": "lx"
+  "event_type": "LeituraAmbiente",
+  "event_id": "f9e8d7c6-4b3a-4c2d-8e1f-0a9b8c7d6e5f",
+  "seq_num": 1207,
+  "device_id": "esp32-vaso-07",
+  "vaso_id": "vaso-07",
+  "timestamp_evento": "2026-09-11T14:32:10-03:00",
+  "temperatura_c": 29.8,
+  "umidade_ar_pct": 41.2,
+  "luminosidade_lux": 8600
 }
 ```
 
-### 4. Qualidade dos eventos
+### 4. Qualidade
 
-Na borda, cada evento passa pelas seguintes verificações:
+**Validação de faixa (range check):** `umidade_solo_pct` deve estar em `[0, 100]`; `temperatura_c` em `[-10, 60]`; `umidade_ar_pct` em `[0, 100]`; `luminosidade_lux` em `[0, 130000]`. Um valor fora da faixa indica sensor desconectado, oxidado ou com mau contato e o evento é marcado **inválido** — não entra no pipeline de decisão, mas é registrado para diagnóstico do hardware.
 
-- **Validade estrutural:** todos os campos obrigatórios devem existir e possuir o tipo esperado.
-- **Validade física:** `umidadeSolo` e `umidadeAr` devem estar entre 0 e 100%, a temperatura entre -10 e 60 °C e a iluminância entre 0 e 150.000 lx. Valores fora desses limites são marcados como inválidos e não entram na janela.
-- **Origem:** `idDispositivo`, `idSensor` e `idVaso` devem estar cadastrados e associados entre si.
-- **Duplicação:** o identificador `idEvento` é armazenado durante 24 horas. Um identificador já observado não é processado novamente. A sequência auxilia a detectar repetição, perda e reinício do dispositivo.
-- **Atualidade:** para atuação, a última medição do solo não pode ter mais de 2 minutos e a última medição ambiental não pode ter mais de 5 minutos. Dados mais antigos podem ser enviados ao histórico, mas não autorizam a bomba.
+**Duplicado:** cada `device_id` mantém um `seq_num` monotônico. Se o `seq_num` recebido for menor ou igual ao último já processado para aquele `device_id`, o evento é reconhecido como **duplicado** (reenvio por retry do ESP32 após timeout de ACK) e descartado sem reprocessar o estado.
 
-Uma leitura isolada com variação superior a 35 pontos percentuais em relação à mediana recente do mesmo sensor é classificada como suspeita. Ela é separada para diagnóstico e a irrigação fica bloqueada até a chegada de uma leitura válida.
+**Desatualizado (stale):** o backend compara `timestamp_evento` com o instante de ingestão. Se a diferença ultrapassar um limiar (2× o intervalo esperado de amostragem, ou o evento chegar após o fechamento da janela à qual pertence), ele é tratado pela política de eventos atrasados do item 8, em vez de ser injetado como leitura corrente.
+
+---
 
 ## Parte 2 — Processamento temporal
 
 ### 5. Operações
 
-O caminho dos eventos é:
-
-```text
-receber
-  → validar contrato, origem, faixa e identificação
-  → eliminar duplicações
-  → converter/calibrar a leitura bruta para as unidades do contrato
-  → agrupar por idVaso
-  → inserir na janela correspondente ao tempo do evento
-  → calcular médias e manter a leitura válida mais recente
-  → detectar necessidade de irrigação
-  → aplicar limites de segurança e tempo de espera
-  → acionar a bomba e registrar a decisão
+```
+LeituraUmidadeSolo / LeituraAmbiente
+        │
+        ▼
+  Validação (schema + faixa)
+        │
+        ▼
+  Deduplicação (seq_num)
+        │
+        ▼
+  Filtragem (descarta inválidos/duplicados; marca atrasados)
+        │
+        ▼
+  Transformação/Enriquecimento (junta vaso_id → espécie → limiares da matriz)
+        │
+        ▼
+  Agrupamento (por vaso_id, em janela deslizante de 30 min)
+        │
+        ▼
+  Agregação (média da umidade do solo na janela; última leitura de ambiente)
+        │
+        ▼
+  Detecção (regra de estresse hídrico)
+        │
+        ▼
+  Decisão
+        │
+        ▼
+  Atuação (comando de irrigação) + Notificação (app / Alexa)
 ```
 
 ### 6. Estado e janela
 
-A regra utiliza uma **janela deslizante de 10 minutos**, avaliada a cada **1 minuto**. Os eventos são agrupados por `idVaso`.
+**Regra:** *Necessidade de irrigação por estresse hídrico*, que depende de leituras anteriores de umidade do solo (uma leitura isolada é ruidosa e não deve, sozinha, acionar a bomba).
 
-O estado mantido para cada vaso contém:
-
-- eventos válidos de umidade do solo dos últimos 10 minutos;
-- eventos ambientais válidos dos últimos 10 minutos;
-- média da umidade do solo na janela;
-- médias de temperatura e umidade do ar;
-- configuração vigente da espécie: limite mínimo de umidade do solo e condições de calor/ar seco;
-- horário e identificador da última irrigação;
-- estado da bomba, duração máxima permitida e período de espera entre irrigações;
-- identificadores recentes já processados.
-
-São exigidas pelo menos três medições válidas de umidade do solo na janela. A irrigação é solicitada quando a média estiver abaixo do limite da espécie. Se também houver calor e ar seco, a condição recebe prioridade, mas a duração máxima da bomba não é ultrapassada.
+- **Tipo de janela:** deslizante (sliding window).
+- **Duração:** 30 minutos.
+- **Frequência de avaliação:** a cada nova leitura de umidade aceita para o vaso, com um *tick* de segurança a cada 5 minutos caso não cheguem novas leituras (para não deixar a regra "parada" se a taxa de amostragem cair).
+- **Estado mantido por `vaso_id`:**
+  - buffer/agregado das leituras de `umidade_solo_pct` dentro da janela de 30 min;
+  - última `LeituraAmbiente` recebida (temperatura, luz) e seu `timestamp_evento`;
+  - `timestamp_ultima_irrigacao` (para aplicar cooldown e evitar acionamentos repetidos).
+  - *(Os limiares por espécie não são estado de janela — são dados de referência consultados na matriz de espécies.)*
 
 ### 7. Semântica temporal
 
-A janela usa o **tempo do evento**, pois deve representar quando a condição ocorreu no ambiente, e não quando o pacote conseguiu chegar ao processador. Isso evita que atraso ou oscilação da rede distorça a sequência das condições observadas.
+A regra usa **tempo do evento** (`timestamp_evento`, gerado no ESP32 via NTP), não tempo de processamento.
 
-O tempo de processamento ainda é usado para verificar a idade da leitura, controlar o intervalo entre duas irrigações e impedir uma atuação baseada em um estado que já não representa o momento atual.
+**Justificativa:** o ESP32 pode enfileirar leituras localmente durante quedas breves de Wi-Fi e reenviá-las em rajada ao reconectar. Se a janela fosse por tempo de processamento, essa rajada distorceria a média (várias leituras "chegando juntas" pareceriam uma queda ou estabilização súbita de umidade que não ocorreu fisicamente naquele instante). Usar tempo do evento preserva a semântica física real de secagem do substrato, que é o que a regra precisa observar.
 
 ### 8. Eventos atrasados
 
-A borda admite atraso de até **30 segundos** antes de fechar cada avaliação. Um evento que pertença à janela, mas chegue depois de o resultado ser produzido, segue a política **separar**:
+Adotamos um **prazo de graça (watermark)** de 10 minutos após o fechamento teórico da janela:
 
-- não modifica retroativamente uma atuação física já realizada;
-- não dispara uma irrigação imediata, pois pode descrever uma condição que já mudou;
-- recebe a marca `atrasado: verdadeiro` e é enviado à nuvem para completar o histórico e permitir diagnóstico da comunicação;
-- se seu tempo ainda estiver dentro da janela na próxima avaliação e ele atender aos critérios de atualidade, poderá participar normalmente dessa nova decisão.
+- Evento atrasado que chega **dentro do prazo de graça** → é **aceito e corrige** o agregado: a janela é recalculada e a regra é reavaliada. Se a correção mudar a decisão e a irrigação daquele ciclo **ainda não foi executada**, a nova decisão vale.
+- Evento atrasado que chega **após o prazo de graça** → é **separado**: não realimenta a decisão em tempo real (já consolidada), mas é gravado no histórico/auditoria do vaso, para dashboards e para calibrar os limiares no futuro.
+- Evento que chegue atrasado depois de a bomba **já ter sido fisicamente acionada** nunca desfaz a atuação (não é possível "retirar" a água) — nesse caso ele só é usado para auditoria e para eventualmente suprimir um novo acionamento redundante no ciclo seguinte.
 
-Assim, o histórico preserva a leitura sem transformar um dado tardio em comando inseguro.
+### 9. Pseudocódigo
 
-### 9. Pseudocódigo da regra
+```
+ESTADO por vaso_id:
+    buffer_umidade            // fila com (valor, timestamp_evento), janela deslizante de 30 min
+    ultima_leitura_ambiente   // {temperatura_c, luminosidade_lux, timestamp_evento}
+    timestamp_ultima_irrigacao // timestamp | null
 
-```text
-A CADA 1 minuto, PARA CADA vaso:
-    agora := relógio local sincronizado
-    solo := eventos UmidadeSoloMedida válidos
-            com tempoEvento em (agora - 10 minutos, agora]
-    ambiente := eventos CondicoesAmbientaisMedidas válidos
-                com tempoEvento em (agora - 10 minutos, agora]
+AO RECEBER evento e:
+    SE NAO validar_evento(e):           // schema, faixa, seq_num duplicado
+        DESCARTAR e
+        RETORNAR
 
-    SE quantidade(solo) < 3:
-        publicar alerta "dados de solo insuficientes"
-        NÃO irrigar
-        CONTINUAR
+    SE e.timestamp_evento < watermark(e.vaso_id):   // fora do prazo de graça
+        ARMAZENAR e em historico_auditoria
+        RETORNAR
 
-    SE idade(último(solo), agora) > 2 minutos:
-        publicar alerta "sensor de solo desatualizado"
-        NÃO irrigar
-        CONTINUAR
+    SE e.tipo == "LeituraUmidadeSolo":
+        inserir (e.umidade_solo_pct, e.timestamp_evento) em buffer_umidade[e.vaso_id]
+        remover de buffer_umidade[e.vaso_id] entradas com timestamp_evento fora da janela de 30 min
+        avaliar_regra(e.vaso_id)
 
-    SE ambiente estiver vazio
-       OU idade(último(ambiente), agora) > 5 minutos:
-        publicar alerta "dados ambientais desatualizados"
-        NÃO usar prioridade climática
+    SE e.tipo == "LeituraAmbiente":
+        ultima_leitura_ambiente[e.vaso_id] = e
 
-    umidadeMedia := média(solo.umidadeSolo)
-    limiteSeco := configuraçãoDaEspécie.limiteMinimoSolo
-    soloSeco := umidadeMedia < limiteSeco
+FUNCAO avaliar_regra(vaso_id):
+    SE tamanho(buffer_umidade[vaso_id]) < 3:
+        RETORNAR   // amostras insuficientes na janela
 
-    calorESeco := ambiente está atual
-                  E média(ambiente.temperatura) >= configuraçãoDaEspécie.limiteCalor
-                  E média(ambiente.umidadeAr) <= configuraçãoDaEspécie.limiteArSeco
+    media_umidade = media(buffer_umidade[vaso_id])
+    req = buscar_requisitos_especie(vaso_id)     // limiares de referência, não é estado de janela
 
-    esperaCumprida := agora - ultimaIrrigação >= 30 minutos
-    seguroParaAtuar := bomba disponível
-                       E reservatório possui água
-                       E esperaCumprida
+    ambiente = ultima_leitura_ambiente[vaso_id]
+    dados_frescos = ambiente != null E (agora() - ambiente.timestamp_evento) <= 15min
 
-    SE soloSeco E seguroParaAtuar:
-        duração := calorESeco ? 20 segundos : 15 segundos
-        idComando := identificador único(idVaso, janela, "irrigar")
-        ligar bomba por no máximo duração usando idComando
-        registrar ultimaIrrigação, duração, medidas e motivo
-        publicar evento IrrigacaoRealizada
-    SENÃO SE soloSeco E NÃO seguroParaAtuar:
-        publicar alerta com o motivo do bloqueio
-    SENÃO:
-        manter bomba desligada
+    cooldown_ok = timestamp_ultima_irrigacao[vaso_id] == null
+                  OU (agora() - timestamp_ultima_irrigacao[vaso_id]) >= req.cooldown_min
+
+    SE media_umidade < req.umidade_min E dados_frescos E cooldown_ok:
+        duracao = calcular_duracao_pulso(req, media_umidade)
+        EMITIR ComandoIrrigacao {
+            vaso_id, duracao_seg: duracao,
+            motivo: "umidade_abaixo_do_limiar",
+            media_umidade, janela_min: 30,
+            timestamp: agora()
+        }
+        timestamp_ultima_irrigacao[vaso_id] = agora()
+
+    SENAO SE media_umidade < req.umidade_min E NAO dados_frescos:
+        EMITIR AlertaDadosDesatualizados { vaso_id, motivo: "leitura_ambiente_obsoleta" }
 ```
 
-O `idComando` torna o comando idempotente: uma repetição da mesma decisão não liga novamente a bomba.
+---
 
 ## Parte 3 — Distribuição e resiliência
 
 ### 10. Distribuição de responsabilidades
 
-Não será utilizada uma camada de névoa neste cenário doméstico, pois há poucos vasos e nenhuma necessidade de coordenar vários locais intermediários.
+Usamos apenas dois níveis do contínuo — **dispositivo** e **nuvem** — sem névoa intermediária (ver justificativa no item 11).
 
-| Responsabilidade | Local | Estado mantido |
-|---|---|---|
-| Amostragem, calibração básica e numeração sequencial | Dispositivo/sensores conectados ao ESP32 | Parâmetros de calibração e sequência atual |
-| Validação, deduplicação, janela, regra, bloqueios de segurança e atuação | Borda (ESP32) | Janelas de 10 minutos, IDs recentes, configuração da espécie e última irrigação |
-| Comunicação entre sensores, rede Wi-Fi e tomada/bomba | Concentrador de comunicação no próprio ESP32 | Fila local de eventos ainda não enviados |
-| Cadastro de vasos e espécies, histórico, relatórios, notificações e análise de longo prazo | Nuvem | Perfis, histórico de telemetria, decisões e alertas |
-| Aplicação da configuração recebida da nuvem | Borda | Última versão válida da configuração, persistida localmente |
+| Responsabilidade | Local de execução |
+|---|---|
+| Leitura dos sensores, carimbo de tempo (NTP) | Dispositivo (ESP32) |
+| Validação de faixa e deduplicação básica | Dispositivo (ESP32) |
+| Enfileiramento local durante queda de conexão | Dispositivo (ESP32) |
+| Regra de emergência mínima (irrigação de segurança) | Dispositivo (ESP32) |
+| Validação de schema, deduplicação final | Nuvem |
+| Estado da janela deslizante (30 min) por vaso | Nuvem |
+| Matriz de requisitos por espécie | Nuvem |
+| Detecção da regra e decisão de irrigação | Nuvem |
+| Orquestração das APIs de terceiros (tomada, Alexa) | Nuvem |
+| Notificação ao usuário / histórico / auditoria | Nuvem |
 
 ### 11. Justificativas
 
-1. **Regra e atuação na borda:** irrigar é uma função essencial e não deve depender da latência nem da disponibilidade da internet. O ESP32 está próximo aos sensores e ao atuador, consegue tomar a decisão em tempo previsível e pode desligar a bomba pelo limite local mesmo durante uma falha externa.
-2. **Histórico e análise na nuvem:** relatórios, comparação entre longos períodos e gerenciamento pelo aplicativo exigem mais armazenamento e uma visão conjunta dos vasos. Essas tarefas toleram atraso e aproveitam melhor a capacidade da nuvem, sem aumentar o risco da atuação imediata.
+**a) Validação de faixa e deduplicação no dispositivo (ESP32).**
+Critérios: **energia** e **volume de dados**. O rádio Wi-Fi é o maior consumidor de energia do ESP32; descartar leituras fisicamente impossíveis (sensor desconectado, mau contato) antes de transmitir evita rajadas de tráfego inúteis e economiza energia e banda — sem custo de rodar isso na borda, já que é um teste de limite trivial (comparação numérica).
 
-O mesmo ESP32 exerce os papéis de concentrador de comunicação e nó de borda: encaminha dados entre redes e também mantém estado e executa a regra local.
+**b) Estado da janela, matriz de espécies e decisão final na nuvem.**
+Critérios: **capacidade** e **necessidade de visão global**. O ESP32 tem RAM/flash limitados para manter buffers de múltiplos vasos e a matriz completa de espécies. Além disso, a decisão cruza dados de diferentes sensores (umidade, luz, temperatura) e depende de acionar APIs externas (tomada inteligente, Alexa) que só são alcançáveis pela internet — informação e capacidade que só existem de forma centralizada na nuvem.
 
-### 12. Comportamento diante de falha
+### 12. Comportamento diante de falhas
 
-**Falha escolhida: conexão com a nuvem indisponível.**
+**Falha escolhida:** conexão com a nuvem indisponível (Wi-Fi local funcionando, mas backend/internet fora do ar) — o risco principal já identificado na Atividade 01.
 
-Quando perder a conexão, o ESP32 continuará usando a última configuração válida da espécie, armazenada em memória persistente. A janela e a regra de irrigação continuarão locais. Eventos, decisões e alertas serão colocados em uma fila persistente com tamanho limitado e enviados quando a conexão retornar.
+**Comportamento do sistema:**
+1. O ESP32 continua amostrando os sensores normalmente e enfileira os eventos localmente (buffer persistente em flash), preservando o `timestamp_evento` original.
+2. Tenta reconectar e reenviar periodicamente (retry com backoff).
+3. Como o acionamento da bomba depende, na arquitetura da Atividade 01, de uma API de tomada inteligente de terceiro só acessível via nuvem, **a irrigação automática por regra completa (com limiares por espécie) fica indisponível durante a queda** — essa é a degradação assumida.
+4. **Rede de segurança local:** o ESP32 aplica uma regra de emergência mínima e conservadora, independente da nuvem: se `umidade_solo_pct` ficar abaixo de um limiar crítico fixo (ex.: 10%, mais restritivo que qualquer espécie cadastrada) **e** a conexão estiver indisponível há mais de *N* horas, aciona um pulso curto e limitado de irrigação. Isso só é possível se a tomada inteligente também expuser uma API local (ex.: firmware Tasmota/ESPHome com HTTP no LAN); com uma tomada 100% dependente da nuvem do fabricante, essa rede de segurança não existe e o sistema apenas registra e alerta — ponto que recomendamos revisitar na escolha do atuador.
+5. Ao reconectar, o ESP32 reenvia a fila de eventos pendentes (tratados como atrasados conforme item 8) e o backend dispara uma notificação resumindo o período offline e eventuais ações de emergência tomadas.
 
-Durante a operação offline:
-
-- a bomba continua sujeita à duração máxima e ao intervalo mínimo entre irrigações;
-- o aplicativo e a Alexa deixam de receber informações em tempo real;
-- alterações de configuração ficam indisponíveis até a reconexão;
-- se a configuração local estiver ausente ou corrompida, a irrigação automática é bloqueada e um alerta local é sinalizado;
-- após a reconexão, a nuvem elimina duplicações por `idEvento` e `idComando`, aceita os eventos para o histórico e não repete atuações antigas.
-
-O serviço, portanto, degrada nas funções remotas, mas preserva localmente a proteção essencial da planta e da bomba.
-
-### 13. Diagrama da distribuição
+### 13. Diagrama
 
 ```mermaid
-flowchart LR
-    subgraph D[Dispositivo]
-        S1[Higrômetro<br/>amostragem]
-        S2[DHT e BH1750<br/>amostragem]
+flowchart TB
+    subgraph DISP["Dispositivo (vaso) — ESP32"]
+        S1[Higrômetro de solo]
+        S2[DHT22]
+        S3[BH1750 / LDR]
+        FW[Firmware: valida faixa,\ncarimba tempo, dedup seq_num]
+        BUF[(Fila local /\nbuffer offline)]
+        EMERG[Regra de emergência\nlocal - se offline > N h]
+        S1 --> FW
+        S2 --> FW
+        S3 --> FW
+        FW --> BUF
+        FW -.-> EMERG
     end
 
-    subgraph E[Borda e concentrador — ESP32]
-        V[Validar, calibrar<br/>e deduplicar]
-        J[(Estado por vaso<br/>janela deslizante de 10 min)]
-        R[Regra avaliada<br/>a cada 1 min]
-        Q[(Fila persistente<br/>para sincronização)]
+    BUF -- "MQTT/TLS (quando há conexão)" --> ING
+
+    subgraph NUVEM["Nuvem"]
+        ING[Validação de schema\n+ deduplicação]
+        FILT[Filtragem\ndescarta inválidos/atrasados]
+        ENR[Enriquecimento\n+ matriz de espécies]
+        WIN[(Estado: janela deslizante\n30 min, por vaso_id)]
+        AGG[Agregação\nmédia da umidade]
+        DET[Detecção da regra\nestresse hídrico]
+        DEC{Decisão}
+        NOTIF[Notificação]
+        ACT[Comando de atuação]
     end
 
-    subgraph A[Atuação local]
-        P[Tomada/bomba<br/>máximo de 15–20 s]
+    ING --> FILT --> ENR --> WIN --> AGG --> DET --> DEC
+    DEC -- "umidade baixa + cooldown ok" --> ACT
+    DEC -- "dados obsoletos" --> NOTIF
+
+    subgraph EXT["APIs de terceiros"]
+        PLUG[API da tomada inteligente]
+        ALEXA[Skill Alexa]
     end
 
-    subgraph C[Nuvem]
-        H[(Histórico)]
-        CFG[Cadastro e configuração<br/>de plantas e vasos]
-        N[Aplicativo e notificações]
-    end
+    ACT --> PLUG --> BOMBA[(Mini-bomba d'água)]
+    NOTIF --> ALEXA
+    NOTIF --> APP[App do usuário]
 
-    S1 -->|UmidadeSoloMedida| V
-    S2 -->|CondicoesAmbientaisMedidas| V
-    V --> J
-    J --> R
-    R -->|comando idempotente| P
-    R -->|eventos e decisões| Q
-    Q -. Wi-Fi / MQTT ou HTTPS .-> H
-    H --> N
-    CFG -. configuração versionada .-> R
+    EMERG -. "controle local direto\n(se a tomada expuser API LAN)" .-> BOMBA
 ```
-
-## Síntese
-
-A solução transforma leituras de solo e ambiente em uma decisão temporal por vaso. A janela reduz a influência de ruídos isolados, os critérios de atualidade evitam atuar com informações antigas e os limites de segurança impedem acionamentos repetidos. A decisão permanece próxima aos sensores e à bomba, enquanto a nuvem concentra funções históricas e de interação com o usuário.
