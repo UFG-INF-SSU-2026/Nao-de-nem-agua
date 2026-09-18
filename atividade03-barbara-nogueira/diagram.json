@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "author": "Bárbara Nogueira",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot",
+      "top": -10,
+      "left": -180,
+      "attrs": {
+        "value": "614"
+      }
+    },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "coleta",
+      "top": 110,
+      "left": -160,
+      "attrs": {
+        "value": "",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "autorizacao",
+      "top": -20,
+      "left": 210,
+      "attrs": {
+        "color": "green",
+        "label": "Autorizacao"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "falha",
+      "top": 80,
+      "left": 210,
+      "attrs": {
+        "color": "red",
+        "label": "Dado indisponivel"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 40,
+      "left": 160,
+      "attrs": {
+        "value": "220"
+      }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 140,
+      "left": 160,
+      "attrs": {
+        "value": "220"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "esp:TX0",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "esp:RX0",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "pot:VCC",
+      "esp:3V3",
+      "red",
+      []
+    ],
+    [
+      "pot:GND",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "pot:SIG",
+      "esp:D34",
+      "green",
+      []
+    ],
+    [
+      "coleta:2",
+      "esp:D23",
+      "blue",
+      []
+    ],
+    [
+      "coleta:1",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:D18",
+      "r1:1",
+      "green",
+      []
+    ],
+    [
+      "r1:2",
+      "autorizacao:A",
+      "green",
+      []
+    ],
+    [
+      "autorizacao:C",
+      "esp:GND.1",
+      "black",
+      []
+    ],
+    [
+      "esp:D19",
+      "r2:1",
+      "red",
+      []
+    ],
+    [
+      "r2:2",
+      "falha:A",
+      "red",
+      []
+    ],
+    [
+      "falha:C",
+      "esp:GND.1",
+      "black",
+      []
+    ]
+  ],
+  "serialMonitor": {
+    "display": "always",
+    "collapse": false,
+    "newline": "lf"
+  }
+}

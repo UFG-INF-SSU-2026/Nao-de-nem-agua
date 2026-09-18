@@ -1,0 +1,6 @@
+Teste local da lógica C++. Não é execução Wokwi.
+
+NORMAL: entrada 60%, autorizacao OFF
+DECISAO: tres amostras secas, autorizacao ON
+ADVERSARIAL FINAL 4: valor 20% retido; idade 5000ms; DADO_OBSOLETO; autorizacao OFF
+LIMITES: recuperacao, invalidos, limiar e rollover aprovados

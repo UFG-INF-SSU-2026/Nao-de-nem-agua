@@ -1,0 +1,36 @@
+Execução local C++ com interfaces Arduino substituídas. Não é execução Wokwi.
+
+Amostragem: chave esquerda coleta; direita pausa. Entrada i injeta leitura invalida.
+{"eventType":"estado.inicial","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":0,"sequence":1,"value":null,"unit":"pct_simulado","state":"DESCONHECIDO","valid":false,"actuatorAuthorized":false,"ageMs":null}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":1000,"sequence":2,"value":60.00,"unit":"pct_simulado","state":"NORMAL","valid":true,"actuatorAuthorized":false,"ageMs":0}
+[1000] state=NORMAL reason=nova_leitura_valida authorization=OFF
+{"eventType":"estado.alterado","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":1000,"sequence":3,"value":60.00,"unit":"pct_simulado","state":"NORMAL","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":1000,"sequence":4,"value":60.00,"unit":"pct_simulado","state":"NORMAL","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":2000,"sequence":5,"value":60.00,"unit":"pct_simulado","state":"NORMAL","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":2000,"sequence":6,"value":60.00,"unit":"pct_simulado","state":"NORMAL","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":3000,"sequence":7,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+[3000] state=AGUARDANDO reason=nova_leitura_valida authorization=OFF
+{"eventType":"estado.alterado","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":3000,"sequence":8,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":3000,"sequence":9,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":4000,"sequence":10,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":4000,"sequence":11,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":5000,"sequence":12,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":0}
+[5000] state=AUTORIZADO reason=nova_leitura_valida authorization=ON
+{"eventType":"estado.alterado","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":5000,"sequence":13,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":5000,"sequence":14,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":6000,"sequence":15,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":1000}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":7000,"sequence":16,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":2000}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":8000,"sequence":17,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":3000}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":9000,"sequence":18,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":4000}
+[10000] state=DADO_OBSOLETO reason=validade_expirada authorization=OFF
+{"eventType":"estado.alterado","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":10000,"sequence":19,"value":20.00,"unit":"pct_simulado","state":"DADO_OBSOLETO","valid":false,"actuatorAuthorized":false,"ageMs":5000}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":10000,"sequence":20,"value":20.00,"unit":"pct_simulado","state":"DADO_OBSOLETO","valid":false,"actuatorAuthorized":false,"ageMs":5000}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":10000,"sequence":21,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+[10000] state=AGUARDANDO reason=nova_leitura_valida authorization=OFF
+{"eventType":"estado.alterado","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":10000,"sequence":22,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":11000,"sequence":23,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":11000,"sequence":24,"value":20.00,"unit":"pct_simulado","state":"AGUARDANDO","valid":true,"actuatorAuthorized":false,"ageMs":0}
+{"eventType":"umidade.leitura","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":12000,"sequence":25,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":0}
+[12000] state=AUTORIZADO reason=nova_leitura_valida authorization=ON
+{"eventType":"estado.alterado","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":12000,"sequence":26,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":0}
+{"eventType":"dispositivo.status","deviceId":"esp32-barbara-01","entityId":"vaso-01","eventTimeMs":12000,"sequence":27,"value":20.00,"unit":"pct_simulado","state":"AUTORIZADO","valid":true,"actuatorAuthorized":true,"ageMs":0}
