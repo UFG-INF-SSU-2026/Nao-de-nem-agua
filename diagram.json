@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "author": "Davi Duarte Neco",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp32",
+      "top": 20,
+      "left": 245,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot1",
+      "top": -70,
+      "left": 35,
+      "attrs": { "value": "2048" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledBomba",
+      "top": 165,
+      "left": 60,
+      "attrs": { "color": "red", "label": "Bomba" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 205,
+      "left": 130,
+      "rotate": 90,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    [ "esp32:3V3", "pot1:VCC", "red", [ "h-30", "v-80" ] ],
+    [ "esp32:GND.1", "pot1:GND", "black", [ "h-55", "v-45" ] ],
+    [ "esp32:34", "pot1:SIG", "green", [ "h-85", "v-15" ] ],
+    [ "esp32:23", "r1:2", "green", [ "h55", "v70" ] ],
+    [ "r1:1", "ledBomba:A", "green", [ "h-25", "v-20" ] ],
+    [ "ledBomba:K", "esp32:GND.2", "black", [ "h-45", "v95", "h210" ] ]
+  ],
+  "dependencies": {}
+}

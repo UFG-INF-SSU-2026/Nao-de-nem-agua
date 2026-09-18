@@ -1,0 +1,4 @@
+Nenhuma biblioteca adicional e necessaria.
+
+O projeto utiliza somente funcoes da API Arduino/ESP32 disponibilizadas
+diretamente pelo ambiente Wokwi.
