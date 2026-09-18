@@ -1,0 +1,2 @@
+# Bibliotecas adicionais usadas neste projeto (adicionar pela aba "Library Manager" do Wokwi)
+DHT sensor library for ESPx
