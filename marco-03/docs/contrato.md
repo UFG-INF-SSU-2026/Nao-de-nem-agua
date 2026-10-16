@@ -1,5 +1,11 @@
 # Contrato da fronteira — v1
 
+O Marco 3 acrescenta [AlertaCuidado v1](../contrato/v1/alerta-cuidado.schema.json)
+em `naodenemagua/v1/vaso/{vasoId}/alert/cuidado` (QoS 1, retain false).
+Filtro de assinatura: `naodenemagua/v1/vaso/{vasoId}/alert/#`.
+Os quatro contratos anteriores permanecem iguais. Campos obrigatórios, exemplo,
+gatilhos, tempo UTC e correlação estão em [Alertas de cuidado](alertas.md).
+
 Versão vigente: **1**. Schemas formais em [`contrato/v1/`](../contrato/v1),
 validados em tempo de execução por [`contrato/index.js`](../contrato/index.js).
 

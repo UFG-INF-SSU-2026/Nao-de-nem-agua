@@ -9,13 +9,11 @@
     "qos": 1,
     "brokerPort": 8883
   },
-
   "identidade": {
     "prefixoTopico": "naodenemagua/v1",
     "vasoId": "vaso-01",
     "deviceIdSimulador": "sim-vaso-01"
   },
-
   "regra": {
     "_comment": "Limiares e tempos da regra de decisao. Origem: recorte de decisao e atuacao do Marco 1 (histerese) + recorte de estado temporal (validade).",
     "limiarLiga": 30,
@@ -37,8 +35,10 @@
     "intervaloHeartbeatMs": 1500,
     "umidadeInicial": 60
   },
-
   "log": {
     "arquivoJsonl": "consumidor-servico/eventos.jsonl"
+  },
+  "alertas": {
+    "ttlMs": 60000
   }
 }

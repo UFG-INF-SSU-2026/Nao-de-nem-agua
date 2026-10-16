@@ -1,4 +1,10 @@
-# Marco 2 — Arquitetura e decisões
+# Marco 3 — Arquitetura e decisões
+
+O Marco 3 preserva a fronteira descrita abaixo e acrescenta o serviço como
+produtor de `AlertaCuidado`, consumido pelo notificador independente via MQTT.
+O desenho, gatilhos, correlação, limites dos caches e preparação para ACL estão
+em [Alertas de cuidado](alertas.md). As seções históricas do Marco 2 registram a
+origem das decisões; aplicativo e Alexa são representados pelo terminal.
 
 **Projeto:** *Não dê nem água* — cuidado assistido de plantas de interior
 **Disciplina:** Software para Sistemas Ubíquos — UFG

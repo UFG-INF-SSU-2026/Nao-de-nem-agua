@@ -10,7 +10,8 @@
     "simulador": "node simulador-produtor/src/main.js",
     "observador": "node scripts/observador.js",
     "teste": "node scripts/teste-integracao.js",
-    "ataque": "node scripts/ataques.js"
+    "ataque": "node scripts/ataques.js",
+    "notificador": "node notificador/src/main.js"
   },
   "dependencies": {
     "aedes": "^0.51.3",

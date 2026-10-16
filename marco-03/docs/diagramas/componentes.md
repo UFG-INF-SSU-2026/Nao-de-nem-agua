@@ -1,5 +1,14 @@
 # Diagrama de componentes
 
+O ciclo do Marco 3 acrescenta este fluxo independente à fronteira abaixo:
+
+```mermaid
+flowchart LR
+    S[Serviço de irrigação: consumidor e produtor] -->|alert/cuidado, QoS 1, não retido| B[Mesmo broker MQTT]
+    B -->|alert/#| N[Notificador: somente leitura]
+    B -->|alert/# e tópicos anteriores| O[Observador]
+```
+
 Esboço arquitetural da fronteira do Marco 2. Cada caixa é um processo
 executável; cada seta é uma publicação ou assinatura MQTT.
 

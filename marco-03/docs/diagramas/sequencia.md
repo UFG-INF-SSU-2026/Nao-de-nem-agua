@@ -1,5 +1,27 @@
 # Diagramas de sequência
 
+## Marco 3 — ciclo de alertas
+
+```mermaid
+sequenceDiagram
+    participant G as Gateway
+    participant B as Broker MQTT
+    participant S as Serviço
+    participant N as Notificador
+    G->>B: terceira leitura seca (eventId)
+    B->>S: telemetry/soil
+    S->>B: SOLO_SECO (correlationId = eventId)
+    B->>N: alert/cuidado (QoS 1, não retido)
+    N->>N: validar, deduplicar, verificar TTL e exibir
+    S->>B: PULSO_IRRIGACAO (commandId)
+    B->>G: command/irrigacao
+    G->>B: ack EXECUTADO
+    B->>S: ack/irrigacao
+    S->>S: associar commandId à ação e deduplicar ack
+    S->>B: IRRIGACAO_EXECUTADA (correlationId = commandId)
+    B->>N: alert/cuidado
+```
+
 ## 1. Caminho feliz — da leitura à atuação
 
 Mostra o percurso completo de um evento identificado até o efeito observável,

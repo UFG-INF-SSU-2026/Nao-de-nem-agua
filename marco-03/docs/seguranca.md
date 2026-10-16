@@ -122,15 +122,15 @@ sig = HMAC-SHA256(chave, topico + "\n" + corpo)      corpo = o JSON sem o campo 
 npm run teste
 ```
 
-As seções 8 a 12 do teste cobrem a segurança: 20 verificações (mais uma na seção 2, que confere que o comando chega assinado), todas com controle positivo, porque recusar tudo também "passaria" num teste ingênuo.
+As seções 9 a 13 do teste cobrem a segurança: 20 verificações (mais uma na seção 2, que confere que o comando chega assinado), todas com controle positivo, porque recusar tudo também "passaria" num teste ingênuo.
 
 | Seção | Verifica |
 |---|---|
-| 8 Canal | texto puro não conecta; cliente sem a CA recusa o broker |
-| 9 Identidade | sem senha, senha errada, usuário inexistente e `clientId` alheio são recusados; identidade válida conecta |
-| 10 Autorização | notificador e observador não publicam; gateway não assina nem publica em outro vaso; `deviceId` falso é barrado |
-| 11 HMAC no serviço | leituras secas sem assinatura, adulteradas ou com chave errada não geram comando; as mesmas leituras assinadas geram |
-| 12 HMAC no dispositivo | comando com assinatura falsa e sem assinatura → `REJEITADO_ASSINATURA` |
+| 9 Canal | texto puro não conecta; cliente sem a CA recusa o broker |
+| 10 Identidade | sem senha, senha errada, usuário inexistente e `clientId` alheio são recusados; identidade válida conecta |
+| 11 Autorização | notificador e observador não publicam; gateway não assina nem publica em outro vaso; `deviceId` falso é barrado |
+| 12 HMAC no serviço | leituras secas sem assinatura, adulteradas ou com chave errada não geram comando; as mesmas leituras assinadas geram |
+| 13 HMAC no dispositivo | comando com assinatura falsa e sem assinatura → `REJEITADO_ASSINATURA` |
 
 **Ataques ao vivo**, com broker, serviço e simulador ligados:
 
@@ -156,23 +156,26 @@ E pelo teclado do simulador: `a` (leitura sem assinatura), `g` (adulterada depoi
 4. **Chave simétrica.** Quem tem a chave do dispositivo pode assinar tanto como dispositivo quanto como serviço. Separar os papéis exigiria assinatura assimétrica (ECDSA) ou mTLS com certificados por dispositivo, fora do escopo deste marco.
 5. **Repetição de telemetria.** Uma leitura legítima reenviada é barrada pela deduplicação por `eventId`, mas o conjunto de ids vistos é limitado (500) e fica em memória. Comandos têm proteção própria (`idempotencyKey` + prazo no relógio do dispositivo).
 6. **Sem revogação.** Para trocar uma credencial é preciso rodar `npm run seguranca -- --forcar` e reiniciar os componentes. Não há rotação automática.
+7. **Alertas sem assinatura.** No broker local, só o serviço publica em `alert/` (ACL). No broker público, sem ACL, um terceiro poderia publicar um alerta falso para o notificador. O efeito é informativo (um aviso no terminal) e não físico, mas fica registrado. A correção seria uma chave HMAC própria do serviço.
 
 ---
 
-## 6. Integração com o ciclo de alertas (outro ramo)
+## 6. Integração com o ciclo de alertas
 
-O ciclo `servico-irrigacao` → `notificador` (`AlertaCuidado`) está sendo feito em
-outro ramo. Para ele se encaixar nesta camada:
+O ciclo `servico-irrigacao` → `notificador` (`AlertaCuidado`, ver
+[`alertas.md`](alertas.md)) roda sobre esta camada:
 
-- **Conexão:** use `contrato.conectar(cfg, '<identidade>', { clientId: '<identidade>-...' })`
-  em vez de `mqtt.connect`. A função monta TLS e credenciais para os dois caminhos.
-- **Identidades e ACL já preparadas:** o serviço já pode publicar em
-  `naodenemagua/v1/vaso/+/alert/#`, e a identidade `notificador` só pode
-  assinar esse ramo. Um tópico de alerta fora de `alert/` exige ajuste em
-  `seguranca/acl.json`.
-- **Assinatura dos alertas:** não é obrigatória. A ACL garante que só o serviço
-  publica em `alert/`, e o HMAC por dispositivo foi pensado para a fronteira com
-  o dispositivo. Se quiserem assinar também, seria preciso criar uma chave do
-  serviço, à parte das chaves dos dispositivos.
-- **Teste:** os novos casos devem conectar com `conectarComo('<identidade>')`
-  no `teste-integracao.js`.
+- **O serviço** publica os alertas com a mesma conexão autenticada com que
+  publica os comandos. Pela ACL, `servico-irrigacao` pode publicar em
+  `naodenemagua/v1/vaso/+/alert/#`.
+- **O notificador** conecta com `contrato.conectar(cfg, 'notificador')`: TLS +
+  usuário/senha no broker local, e pela ACL **só assina** `alert/#`. A
+  identidade dele não abre o tópico de comando.
+- **O ack** só corrige o estado da bomba e só gera `IRRIGACAO_EXECUTADA` ou
+  `IRRIGACAO_RECUSADA` se for de um comando que o próprio serviço emitiu, vindo
+  do dispositivo que o recebeu. A recusa de um comando forjado
+  (`REJEITADO_ASSINATURA` de um `commandId` desconhecido) não vira alerta nem
+  muda o estado.
+- **O teste** (`npm run teste`) executa a seção 8, de alertas, com cada papel na
+  própria identidade e as mensagens do dispositivo assinadas, e depois as seções
+  9 a 13, de segurança.

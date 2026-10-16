@@ -1,13 +1,19 @@
 # Marco 3 — evolução da fronteira produtor-consumidor
 
 Evolução do Marco 2 (**`gateway-vaso`** → **`servico-irrigacao`**, por **MQTT**,
-com contrato versionado e comando idempotente), agora com **canal TLS**,
-**autenticação por usuário/senha**, **ACL no broker** e **assinatura HMAC** de
-cada mensagem.
+com contrato versionado e comando idempotente) em duas frentes:
+
+- **Novo ciclo produtor-consumidor:** o `servico-irrigacao`, que era só
+  consumidor, passa a **produzir alertas de cuidado** (`AlertaCuidado`). Eles
+  são consumidos pelo **notificador**, um processo independente que representa
+  o aplicativo ou a Alexa no terminal, com validação, deduplicação e expiração.
+- **Segurança:** **canal TLS**, **autenticação por usuário/senha**, **ACL no
+  broker** e **assinatura HMAC** de cada mensagem do dispositivo.
 
 - Segurança (canal, identidade, autorização, HMAC) → [`docs/seguranca.md`](docs/seguranca.md)
 - Decisões arquiteturais → [`docs/arquitetura.md`](docs/arquitetura.md)
 - Contrato e payloads → [`docs/contrato.md`](docs/contrato.md)
+- Alertas, correlação, TTL e ACL futura → [`docs/alertas.md`](docs/alertas.md)
 - Diagramas → [`docs/diagramas/`](docs/diagramas/)
 
 ---
@@ -27,7 +33,7 @@ identidade (esses arquivos **não** vão para o git):
 npm run seguranca
 ```
 
-Depois, **três terminais**:
+Depois, **quatro terminais PowerShell**, todos na pasta `marco-03`:
 
 ```bash
 npm run broker
@@ -41,6 +47,10 @@ npm run servico
 npm run simulador
 ```
 
+```powershell
+npm run notificador
+```
+
 Pronto — a telemetria já está atravessando a fronteira. No terminal do
 simulador, pressione `s` para secar o solo e observe a decisão acontecer.
 
@@ -50,11 +60,17 @@ simulador, pressione `s` para secar o solo e observe a decisão acontecer.
 npm run teste
 ```
 
-Sobe broker e serviço, assume o papel do dispositivo e verifica 41 caminhos.
-Os do Marco 2 cobrem decisão, deduplicação, contrato, expiração, retry, comando
-expirado, evento histórico e *will message*. Os do Marco 3, nas seções 8 a 12,
-cobrem TLS, usuário/senha, ACL e HMAC no serviço e no dispositivo. Leva cerca
-de 40 segundos.
+Sobe broker local (TLS) em porta livre, serviço, notificador e simulador como
+subprocessos e assume o papel do dispositivo. São 62 verificações:
+
+- **seções 1 a 7 (Marco 2):** decisão, deduplicação, contrato, expiração, retry,
+  comando expirado, evento histórico e *will message*;
+- **seção 8 (alertas):** acks fora de ordem, duplicatas, expiração, LWT,
+  recuperação, rejeições e mensagens inválidas no notificador;
+- **seções 9 a 13 (segurança):** TLS, usuário/senha, ACL e HMAC no serviço e no
+  dispositivo.
+
+Não depende de internet. Leva cerca de 1 minuto.
 
 Use depois de qualquer alteração, inclusive depois da alteração feita ao vivo
 durante a verificação.
@@ -141,6 +157,16 @@ $env:MQTT_URL="mqtts://broker.hivemq.com:8883"; npm run servico
 > com o ESP32 ligado: o LED da bomba não acende e o Serial mostra
 > `REJEITADO_ASSINATURA`. Ver `docs/seguranca.md`.
 
+Em outro PowerShell, configure o mesmo broker para o notificador:
+
+```powershell
+$env:MQTT_URL="mqtts://broker.hivemq.com:8883"
+npm run notificador
+```
+
+O host, prefixo e vaso precisam coincidir com os valores do firmware Wokwi.
+Para voltar ao broker local, use `Remove-Item Env:MQTT_URL` em cada terminal.
+
 ---
 
 ## Segundo consumidor
@@ -149,7 +175,7 @@ $env:MQTT_URL="mqtts://broker.hivemq.com:8883"; npm run servico
 npm run observador
 ```
 
-Assina os mesmos tópicos e apenas imprime. Pode ser ligado e desligado a
+Assina os quatro tópicos anteriores e `alert/#` e apenas imprime. Pode ser ligado e desligado a
 qualquer momento **sem que produtor ou serviço saibam que ele existe** — é a
 demonstração prática do desacoplamento, e o lugar que o app Android ocupará na
 evolução prevista.
@@ -195,7 +221,7 @@ marco-03/
 │   └── chaves-hmac.json        chaves de demonstração por dispositivo
 ├── contrato/
 │   ├── index.js                carregamento, validação (ajv), tópicos e conexão segura
-│   └── v1/*.schema.json        os quatro schemas do contrato
+│   └── v1/*.schema.json        cinco schemas, incluindo AlertaCuidado
 ├── produtor-esp32/             PRODUTOR — firmware Wokwi (caminho B)
 ├── simulador-produtor/         PRODUTOR — substituto declarado (caminho A)
 ├── broker-local/               MIDDLEWARE — broker Aedes
@@ -203,9 +229,11 @@ marco-03/
 │   ├── src/main.js             CONSUMIDOR — pipeline e MQTT
 │   ├── src/estado.js           estado temporal e expiração
 │   ├── src/decisao.js          histerese, debounce, cooldown, comando
+│   ├── src/alertas.js          emissão e correlação de alertas
 │   └── src/log.js              log legível + eventos.jsonl
+├── notificador/src/main.js     consumidor independente de alert/#
 ├── scripts/
-│   ├── teste-integracao.js     verificação automática dos 41 caminhos
+│   ├── teste-integracao.js     verificação automática: fronteira, alertas e segurança (62)
 │   ├── ataques.js              `npm run ataque -- <nome>`: ataques de demonstração
 │   └── observador.js           segundo consumidor
 └── docs/                       arquitetura, contrato, segurança e diagramas

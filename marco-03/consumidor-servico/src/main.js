@@ -24,6 +24,7 @@ const path = require('path');
 const contrato = require('../../contrato');
 const seguranca = require('../../seguranca');
 const { EstadoVaso } = require('./estado');
+const { AlertasCuidado } = require('./alertas');
 const { decidir } = require('./decisao');
 const { Log, CORES } = require('./log');
 
@@ -70,6 +71,8 @@ const cliente = contrato.conectar(cfg, IDENTIDADE, {
   clientId: `${IDENTIDADE}-${Math.random().toString(16).slice(2, 8)}`,
   clean: true
 });
+
+const alertas = new AlertasCuidado(cliente, cfg, log);
 
 cliente.on('connect', () => {
   log.registrar('CONEXAO', `conectado a ${cfg.mqtt.url}`);
@@ -150,14 +153,6 @@ function tratarTelemetria(payload, agora) {
   }
   estado.registrarEventId(payload.eventId);
 
-  // Etapa 3b -- a validacao local do dispositivo veio negativa.
-  if (payload.valid === false) {
-    const t = estado.marcarLeituraInvalida(payload.invalidReason || 'leitura_invalida');
-    log.registrar('ESTADO', `${t.anterior} -> ${t.atual} (${t.motivo})`, { transicao: t });
-    avaliarEAtuar(agora);
-    return;
-  }
-
   /*
    * Etapa 4 -- evento historico.
    *
@@ -176,8 +171,18 @@ function tratarTelemetria(payload, agora) {
     return;
   }
 
+  // Etapa 3b -- a validacao local do dispositivo veio negativa.
+  if (payload.valid === false) {
+    const t = estado.marcarLeituraInvalida(payload.invalidReason || 'leitura_invalida');
+    log.registrar('ESTADO', `${t.anterior} -> ${t.atual} (${t.motivo})`, { transicao: t });
+    avaliarEAtuar(agora);
+    return;
+  }
+
   // Etapa 5 -- aplica a leitura e recalcula o estado.
   const transicao = estado.aplicarLeitura(payload, agora);
+  estado.deviceId = payload.deviceId;
+  alertas.transicao(transicao, estado, payload);
   if (transicao.anterior !== transicao.atual) {
     log.registrar(
       'ESTADO',
@@ -214,6 +219,7 @@ function tratarHeartbeat(payload, agora) {
    */
   if (payload.state === 'OFFLINE') {
     const t = estado.marcarOffline(payload.reason || 'lwt');
+    alertas.transicao(t, estado, payload);
     log.registrar('ESTADO', `${t.anterior} -> ${t.atual} (via LWT do broker: ${t.motivo})`, {
       transicao: t
     });
@@ -265,12 +271,13 @@ function tratarAck(payload) {
    * dispositivo informa que nao atuou.
    */
   /*
-   * So o ack do ULTIMO comando deste servico corrige o estado. Um ack de outro
-   * commandId -- por exemplo a recusa de um comando forjado por terceiro --
-   * nao diz nada sobre a irrigacao que este servico pediu.
+   * So o ack de um comando que ESTE servico emitiu, vindo do dispositivo que o
+   * recebeu, corrige o estado. A recusa de um comando forjado por terceiro
+   * (REJEITADO_ASSINATURA de um commandId desconhecido) nao diz nada sobre a
+   * irrigacao que este servico pediu: confirmar() devolve null para ela.
    */
-  const ehDoUltimoComando = ultimoComandoEmitido && payload.commandId === ultimoComandoEmitido.commandId;
-  if (ehDoUltimoComando && payload.result !== 'EXECUTADO' && payload.result !== 'IGNORADO_DUPLICADO') {
+  const original = alertas.confirmar(payload);
+  if (original && original.commandId === ultimoComandoEmitido?.commandId && payload.result !== 'EXECUTADO' && payload.result !== 'IGNORADO_DUPLICADO') {
     // REJEITADO_EXPIRADO, REJEITADO_CONTRATO ou REJEITADO_ASSINATURA: o efeito nao ocorreu.
     estado.bombaLigada = false;
   }
@@ -323,6 +330,7 @@ function publicarComando(comando, agora) {
   }
   const texto = seguranca.assinar(disp.chave, topicos.comandoIrrigacao, comando);
 
+  alertas.registrarComando({ ...comando, deviceIdOrigem: estado.deviceId, bootIdOrigem: estado.bootId });
   cliente.publish(
     topicos.comandoIrrigacao,
     texto,
@@ -369,6 +377,7 @@ setInterval(() => {
   const agora = Date.now();
   const transicao = estado.expirarSeNecessario(agora);
   if (transicao) {
+    alertas.transicao(transicao, estado);
     log.registrar(
       'ESTADO',
       `${transicao.anterior} -> ${transicao.atual} (${transicao.motivo}: idade ` +

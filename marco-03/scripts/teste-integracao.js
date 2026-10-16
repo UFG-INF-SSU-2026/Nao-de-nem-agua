@@ -22,7 +22,7 @@ const contrato = require('../contrato');
 const seguranca = require('../seguranca');
 
 const RAIZ = path.resolve(__dirname, '..');
-const PORTA = 8884; // porta propria, para nao colidir com um broker de demo aberto
+let PORTA; // O sistema operacional escolhe uma porta local livre.
 
 const AMBIENTE = {
   ...process.env,
@@ -47,12 +47,18 @@ const T = {
   telemetria: `${PREFIXO}/telemetry/soil`,
   heartbeat: `${PREFIXO}/status/heartbeat`,
   comando: `${PREFIXO}/command/irrigacao`,
-  ack: `${PREFIXO}/ack/irrigacao`
+  ack: `${PREFIXO}/ack/irrigacao`,
+  alerta: `${PREFIXO}/alert/cuidado`
 };
 
 let sequencia = 0;
 const comandosRecebidos = [];
 const falhas = [];
+let aprovados = 0;
+const alertas = [];
+const conexoes = [];
+let saidaNotificador = '';
+let saidaBroker = '';
 let processos = [];
 
 // ---------------------------------------------------------------------------
@@ -63,6 +69,7 @@ const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function verificar(descricao, condicao, detalhe) {
   if (condicao) {
+    aprovados += 1;
     console.log(`  ok    ${descricao}`);
   } else {
     console.log(`  FALHA ${descricao}${detalhe ? ` -- ${detalhe}` : ''}`);
@@ -117,7 +124,10 @@ function subir(rotulo, script) {
     env: AMBIENTE,
     stdio: ['ignore', 'pipe', 'pipe']
   });
+  p.on('error', (e) => { console.error(rotulo, e); falhas.push(rotulo + ': ' + e.message); });
   p.stdout.on('data', (d) => {
+    if (rotulo === 'notificador') saidaNotificador += d.toString();
+    if (rotulo === 'broker') saidaBroker += d.toString();
     if (process.env.VERBOSE) process.stdout.write(`    [${rotulo}] ${d}`);
   });
   p.stderr.on('data', (d) => process.stderr.write(`    [${rotulo} erro] ${d}`));
@@ -126,6 +136,7 @@ function subir(rotulo, script) {
 }
 
 function encerrarTudo() {
+  for (const c of conexoes) c.end(true);
   for (const p of processos) {
     try {
       p.kill();
@@ -166,6 +177,17 @@ function leitura(valor, extras) {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  const reserva = require('net').createServer();
+  await new Promise((r, j) => { reserva.once('error', j); reserva.listen(0, '127.0.0.1', r); });
+  PORTA = reserva.address().port;
+  await new Promise(r => reserva.close(r));
+  AMBIENTE.BROKER_PORT = String(PORTA);
+  // mqtts: o broker de teste so aceita TLS. O certificado vale para 127.0.0.1.
+  AMBIENTE.MQTT_URL = `mqtts://127.0.0.1:${PORTA}`;
+  // Não herdar identidades de uma demonstração aberta em outro terminal.
+  AMBIENTE.TOPIC_PREFIX = 'naodenemagua/v1';
+  AMBIENTE.VASO_ID = 'vaso-01';
+  AMBIENTE.ALERTA_TTL_MS = '60000';
   console.log('');
   console.log('Teste de integracao da fronteira produtor <-> consumidor');
   console.log(`  broker de teste  ${AMBIENTE.MQTT_URL} (TLS + usuario/senha + ACL)`);
@@ -199,8 +221,13 @@ async function main() {
     }
   });
 
+  conexoes.push(cliente);
   await new Promise((r) => cliente.on('connect', r));
-  cliente.subscribe(T.comando, { qos: 1 });
+  // Pela ACL o gateway so assina comandos do proprio vaso; alertas sao
+  // acompanhados pelo "espiao", com a identidade do observador.
+  await new Promise((r, j) => cliente.subscribe(T.comando, { qos: 1 }, e => e ? j(e) : r()));
+  const notificador = subir('notificador', 'notificador/src/main.js');
+  await esperar(800);
 
   /*
    * Comandos de teste (retry e expirado) precisam ser publicados por quem a ACL
@@ -254,7 +281,12 @@ async function main() {
     return responder(cmd, 'EXECUTADO', cmd.action);
   };
 
-  cliente.on('message', (topico, buf) => {
+  const espiao = conectarComo('observador', { reconnectPeriod: 0 });
+  conexoes.push(espiao);
+  await new Promise(r => espiao.once('connect',r));
+  espiao.on('message',(t,b,p) => { try { alertas.push({...JSON.parse(b.toString()),qos:p.qos,retain:p.retain}); } catch { /* lixo intencional */ } });
+  await new Promise((r,j) => espiao.subscribe(T.alerta,{qos:1},e => e ? j(e) : r()));
+  cliente.on('message', (topico, buf, pacote) => {
     if (topico !== T.comando) return;
     const texto = buf.toString();
     const cmd = JSON.parse(texto);
@@ -332,10 +364,12 @@ async function main() {
     `antes ${antesContrato}, agora ${comandosRecebidos.length}`);
 
   // O servico precisa continuar vivo depois de receber lixo.
-  await publicar(leitura(60));
+  const leituraAposLixo = leitura(60);
+  await publicar(leituraAposLixo);
   await esperar(500);
   verificar('servico continua processando apos payloads invalidos',
-    comandosRecebidos.length >= antesContrato);
+    comandosRecebidos.slice(antesContrato).some(c =>
+      c.action === 'PARAR_IRRIGACAO' && c.correlationId === leituraAposLixo.eventId));
 
   // -------------------------------------------------------------------------
   console.log('5. Expiracao de validade -- silencio revoga a autorizacao');
@@ -438,13 +472,110 @@ async function main() {
   // -------------------------------------------------------------------------
   console.log('7. Will message -- queda abrupta marca o dispositivo como offline');
   // -------------------------------------------------------------------------
+  cliente.options.reconnectPeriod = 0;
   cliente.stream.destroy(); // encerra o socket sem DISCONNECT
   await esperar(1500);
   verificar('conexao encerrada abruptamente (LWT publicado pelo broker)', true);
 
+  console.log('8. Alertas de cuidado — serviço produtor e notificador consumidor');
+  const porTipo = tipo => alertas.filter(a => a.alertType === tipo);
+  verificar('cada ciclo seco produz somente um SOLO_SECO', porTipo('SOLO_SECO').length === 2);
+  verificar('pulso confirmado gera IRRIGACAO_EXECUTADA', porTipo('IRRIGACAO_EXECUTADA').some(a => a.correlationId === cmd1?.commandId));
+  verificar('parada EXECUTADO nao gera alerta de irrigacao executada', porTipo('IRRIGACAO_EXECUTADA').every(a => comandosRecebidos.find(c => c.commandId === a.correlationId)?.action === 'PULSO_IRRIGACAO'));
+  verificar('validade expirada gera DADO_OBSOLETO', porTipo('DADO_OBSOLETO').length >= 1);
+  verificar('LWT real gera DISPOSITIVO_OFFLINE uma vez', porTipo('DISPOSITIVO_OFFLINE').length === 1);
+  verificar('LWT sem eventId correlaciona com deviceId existente', porTipo('DISPOSITIVO_OFFLINE')[0]?.correlationId === DEVICE_ID);
+  verificar('SOLO_SECO correlaciona com terceira leitura', porTipo('SOLO_SECO')[0]?.correlationId === cmd1?.correlationId);
+  verificar('alertas MQTT usam QoS 1 e retain false', alertas.length > 0 && alertas.every(a => a.qos === 1 && a.retain === false));
+  const publicacoes = saidaBroker.split('\n').filter(l => l.includes('PUBLISH') && l.includes('/alert/cuidado'));
+  verificar('broker recebe alertas QoS 1 sem flag retained', publicacoes.length > 0 && publicacoes.every(l => l.includes('QoS 1') && !l.includes('[retained]')));
+
+  /*
+   * Marco 3: cada papel com a propria identidade, como na ACL. O gateway
+   * publica heartbeat, telemetria e ack ASSINADOS e assina os comandos; o
+   * servico publica os alertas de teste que o notificador deve descartar.
+   */
+  const controle = conectarComo(DEVICE_ID, { reconnectPeriod: 0 });
+  const servicoTeste = conectarComo('servico-irrigacao', { reconnectPeriod: 0 });
+  conexoes.push(controle, servicoTeste);
+  await Promise.all([controle, servicoTeste].map(c => new Promise(r => c.once('connect', r))));
+  await new Promise((r,j) => controle.subscribe(T.comando, {qos:1}, e => e ? j(e) : r()));
+  controle.on('message', (t,b,p) => {
+    let obj; try { obj = JSON.parse(b.toString()); } catch { return; }
+
+    if(t === T.comando) comandosRecebidos.push(obj);
+  });
+  const enviar = (t,p) => {
+    const ehAlerta = t === T.alerta;
+    const texto = typeof p === 'string' ? p : ehAlerta ? JSON.stringify(p) : seguranca.assinar(CHAVE, t, p);
+    const via = ehAlerta ? servicoTeste : controle;
+    return new Promise((r,j) => via.publish(t, texto, {qos:1}, e => e ? j(e) : r()));
+  };
+  const offline = {schemaVersion:1,eventType:'EstadoConectividade',deviceId:DEVICE_ID,entityId:'vaso-01',bootId:BOOT_ID,state:'OFFLINE'};
+  await enviar(T.heartbeat, offline);
+  await enviar(T.telemetria, leitura(5,{replayed:true,valid:false,invalidReason:'historico'}));
+  await enviar(T.heartbeat, offline);
+  await esperar(200);
+  verificar('OFFLINE repetido e replay invalido nao repetem alerta',porTipo('DISPOSITIVO_OFFLINE').length === 1);
+  const recuperacao = leitura(60);
+  await enviar(T.telemetria, recuperacao);
+  await esperar(250);
+  verificar('recuperacao para NORMAL correlaciona leitura',porTipo('DISPOSITIVO_RECUPERADO').some(a => a.correlationId === recuperacao.eventId));
+
+  await esperar(Number(AMBIENTE.COOLDOWN_MS));
+  for(let i=0;i<3;i++) await enviar(T.telemetria,leitura(20));
+  await esperar(200);
+  const pulsoA = comandosRecebidos.at(-1);
+  await esperar(Number(AMBIENTE.COOLDOWN_MS));
+  await enviar(T.telemetria,leitura(20));
+  await esperar(200);
+  const pulsoB = comandosRecebidos.at(-1);
+  const ack = (c,result) => ({schemaVersion:1,eventType:'ConfirmacaoAtuacao',deviceId:DEVICE_ID,bootId:BOOT_ID,commandId:c.commandId,correlationId:c.correlationId,result,appliedAtDeviceMs:millis()});
+  await enviar(T.ack,ack(pulsoB,'REJEITADO_CONTRATO'));
+  await enviar(T.ack,ack(pulsoA,'REJEITADO_EXPIRADO'));
+  await enviar(T.ack,ack(pulsoA,'REJEITADO_EXPIRADO'));
+  await esperar(250);
+  verificar('acks de pulsos fora de ordem geram duas recusas correlacionadas',porTipo('IRRIGACAO_RECUSADA').filter(a => [pulsoA.commandId,pulsoB.commandId].includes(a.correlationId)).length === 2);
+  const antesExec = porTipo('IRRIGACAO_EXECUTADA').length;
+  await enviar(T.ack,ack(pulsoB,'EXECUTADO'));
+  await enviar(T.ack,ack(pulsoA,'IGNORADO_DUPLICADO'));
+  await esperar(200);
+  verificar('ack terminal repetido ou IGNORADO_DUPLICADO nao produz execucao',porTipo('IRRIGACAO_EXECUTADA').length === antesExec);
+
+  // O retry pode responder antes que a confirmação original atravesse a rede.
+  await esperar(Number(AMBIENTE.COOLDOWN_MS));
+  await enviar(T.telemetria, leitura(20));
+  await esperar(200);
+  const pulsoC = comandosRecebidos.at(-1);
+  await enviar(T.ack, ack(pulsoC, 'IGNORADO_DUPLICADO'));
+  await esperar(150);
+  verificar('IGNORADO_DUPLICADO isolado nao indica nova execucao', porTipo('IRRIGACAO_EXECUTADA').length === antesExec);
+  await enviar(T.ack, ack(pulsoC, 'EXECUTADO'));
+  await enviar(T.ack, ack(pulsoC, 'EXECUTADO'));
+  await esperar(250);
+  verificar('EXECUTADO original apos retry gera exatamente um alerta', porTipo('IRRIGACAO_EXECUTADA').filter(a => a.correlationId === pulsoC.commandId).length === 1);
+
+  const modelo = {schemaVersion:1,eventId:'teste-alerta:000001',eventType:'AlertaCuidado',producerId:'servico-irrigacao',entityId:'vaso-01',alertType:'SOLO_SECO',severity:'ATENCAO',message:'Teste do consumidor',correlationId:recuperacao.eventId,issuedAt:new Date().toISOString(),ttlMs:60000};
+  await enviar(T.alerta,modelo);
+  await enviar(T.alerta,modelo);
+  await enviar(T.alerta,{...modelo,eventId:'expirado',issuedAt:new Date(Date.now()-120000).toISOString()});
+  await enviar(T.alerta,'{invalido');
+  await enviar(T.alerta,{...modelo,eventId:'versao',schemaVersion:2});
+  await enviar(T.alerta,{...modelo,eventId:'schema',severity:'DESCONHECIDO'});
+  await enviar(T.alerta,{...modelo,eventId:'data-impossivel',issuedAt:'2026-02-30T12:00:00.000Z'});
+  await enviar(T.alerta,{...modelo,eventId:'apos-lixo'});
+  await esperar(500);
+  verificar('notificador descarta eventId duplicado',/DUPLICADO.*teste-alerta:000001/.test(saidaNotificador));
+  verificar('notificador descarta alerta vencido',/EXPIRADO.*expirado/.test(saidaNotificador));
+  verificar('notificador registra JSON malformado',saidaNotificador.includes('JSON_MALFORMADO'));
+  verificar('notificador registra versao desconhecida',saidaNotificador.includes('VERSAO_NAO_SUPORTADA'));
+  verificar('notificador registra schema e data impossivel',/SCHEMA_INVALIDO.*schema/.test(saidaNotificador) && /SCHEMA_INVALIDO.*data-impossivel/.test(saidaNotificador));
+  verificar('notificador continua vivo e exibe cartao apos lixo',notificador.exitCode === null && saidaNotificador.includes('apos-lixo') && saidaNotificador.includes('╔'));
+
   await secaoSeguranca(comandante);
 
   // -------------------------------------------------------------------------
+  console.log(`Resultado: ${aprovados} passaram; ${falhas.length} falharam`);
   console.log('');
   comandante.end(true);
   encerrarTudo();
@@ -469,8 +600,12 @@ async function main() {
 async function secaoSeguranca(comandante) {
   const url = AMBIENTE.MQTT_URL;
 
+  // A secao anterior termina com irrigacao em curso. Deixa a validade vencer e
+  // o PARAR por expiracao sair ANTES de vigiar o topico de comando.
+  await esperar(Number(AMBIENTE.VALIDADE_MS) + 1000);
+
   // -------------------------------------------------------------------------
-  console.log('8. Canal -- so TLS, e so com o broker certo');
+  console.log('9. Canal -- so TLS, e so com o broker certo');
   // -------------------------------------------------------------------------
   {
     const r = await tentarConectar(`mqtt://localhost:${PORTA}`, opcoesDe('observador'));
@@ -483,7 +618,7 @@ async function secaoSeguranca(comandante) {
   }
 
   // -------------------------------------------------------------------------
-  console.log('9. Identidade -- o broker so aceita quem ele conhece');
+  console.log('10. Identidade -- o broker so aceita quem ele conhece');
   // -------------------------------------------------------------------------
   {
     const r = await tentarConectar(url, opcoesDe('observador', { username: undefined, password: undefined }));
@@ -509,13 +644,16 @@ async function secaoSeguranca(comandante) {
   }
 
   // -------------------------------------------------------------------------
-  console.log('10. Autorizacao -- cada identidade so faz o que o seu papel permite');
+  console.log('11. Autorizacao -- cada identidade so faz o que o seu papel permite');
   // -------------------------------------------------------------------------
   // Vigia o topico de comando com a identidade do gateway (a unica que o assina).
   const vigia = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
   const vistosNoComando = [];
   await new Promise((r) => vigia.subscribe(T.comando, { qos: 1 }, r));
   vigia.on('message', (t, b) => vistosNoComando.push(b.toString()));
+  // Conta so o que interessa a cada verificacao: o comando forjado e os pulsos.
+  const forjadosVistos = () => vistosNoComando.filter((m) => m.includes('forjado')).length;
+  const pulsosVistos = () => vistosNoComando.filter((m) => m.includes('"PULSO_IRRIGACAO"')).length;
 
   {
     const n = (await tentarConectar(url, opcoesDe('notificador'))).cliente;
@@ -523,8 +661,8 @@ async function secaoSeguranca(comandante) {
     n.publish(T.comando, JSON.stringify({ forjado: true, action: 'PULSO_IRRIGACAO' }), { qos: 1 });
     const derrubado = await Promise.race([caiu, esperar(1500).then(() => false)]);
     await esperar(300);
-    verificar('notificador NAO consegue publicar comando', vistosNoComando.length === 0,
-      `${vistosNoComando.length} mensagem(ns) chegaram ao topico de comando`);
+    verificar('notificador NAO consegue publicar comando', forjadosVistos() === 0,
+      `${forjadosVistos()} mensagem(ns) forjada(s) chegaram ao topico de comando`);
     verificar('broker derruba quem publica fora da ACL', derrubado);
     n.end(true);
   }
@@ -565,7 +703,7 @@ async function secaoSeguranca(comandante) {
   }
 
   // -------------------------------------------------------------------------
-  console.log('11. Autenticidade (HMAC) -- o servico so decide sobre mensagem assinada');
+  console.log('12. Autenticidade (HMAC) -- o servico so decide sobre mensagem assinada');
   // -------------------------------------------------------------------------
   {
     const g = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
@@ -574,23 +712,23 @@ async function secaoSeguranca(comandante) {
     // Tres leituras secas SEM assinatura: bastariam para irrigar, se aceitas.
     for (let i = 0; i < 3; i++) await pub(JSON.stringify(leitura(20)));
     await esperar(600);
-    verificar('leituras secas sem assinatura NAO geram comando', vistosNoComando.length === 0,
-      `${vistosNoComando.length} comando(s)`);
+    verificar('leituras secas sem assinatura NAO geram comando', pulsosVistos() === 0,
+      `${pulsosVistos()} pulso(s)`);
 
     // Tres leituras assinadas como 60% e adulteradas para 20% depois.
     for (let i = 0; i < 3; i++) {
       await pub(seguranca.assinar(CHAVE, T.telemetria, leitura(60)).replace('"value":60', '"value":20'));
     }
     await esperar(600);
-    verificar('leituras adulteradas apos assinar NAO geram comando', vistosNoComando.length === 0,
-      `${vistosNoComando.length} comando(s)`);
+    verificar('leituras adulteradas apos assinar NAO geram comando', pulsosVistos() === 0,
+      `${pulsosVistos()} pulso(s)`);
 
     // Assinadas com a chave ERRADA (um atacante que conhece o formato, nao a chave).
     const chaveFalsa = crypto.randomBytes(32).toString('hex');
     for (let i = 0; i < 3; i++) await pub(seguranca.assinar(chaveFalsa, T.telemetria, leitura(20)));
     await esperar(600);
-    verificar('leituras assinadas com chave errada NAO geram comando', vistosNoComando.length === 0,
-      `${vistosNoComando.length} comando(s)`);
+    verificar('leituras assinadas com chave errada NAO geram comando', pulsosVistos() === 0,
+      `${pulsosVistos()} pulso(s)`);
 
     // Controle positivo: as mesmas tres leituras, assinadas de verdade.
     await esperar(Number(AMBIENTE.COOLDOWN_MS));
@@ -600,13 +738,13 @@ async function secaoSeguranca(comandante) {
     }
     await esperar(700);
     verificar('as mesmas leituras, assinadas de verdade, geram comando (controle positivo)',
-      vistosNoComando.length >= 1, 'nenhum comando');
+      pulsosVistos() >= 1, 'nenhum pulso');
     g.end(true);
   }
   vigia.end(true);
 
   // -------------------------------------------------------------------------
-  console.log('12. Ultima barreira -- o dispositivo recusa comando nao assinado pelo servico');
+  console.log('13. Ultima barreira -- o dispositivo recusa comando nao assinado pelo servico');
   // -------------------------------------------------------------------------
   {
     // O simulador real e o dispositivo aqui: o teste so forja o comando.
@@ -649,6 +787,14 @@ async function secaoSeguranca(comandante) {
   }
 }
 
+process.on('exit', encerrarTudo);
+// Evita deixar subprocessos e sockets abertos se uma conexão nunca completar.
+setTimeout(() => {
+  console.error('Tempo limite do teste excedido');
+  encerrarTudo();
+  process.exit(1);
+}, 150000).unref();
+process.on('uncaughtException', e => { console.error(e); encerrarTudo(); process.exit(1); });
 process.on('SIGINT', () => {
   encerrarTudo();
   process.exit(130);

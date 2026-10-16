@@ -25,7 +25,8 @@ const assinaturas = [
   topicos.telemetriaSolo,
   topicos.heartbeat,
   topicos.comandoIrrigacao,
-  topicos.ackIrrigacao
+  topicos.ackIrrigacao,
+  topicos.alertas
 ];
 
 // Identidade "observador": pela ACL so assina, nunca publica.
@@ -36,7 +37,7 @@ const cliente = contrato.conectar(cfg, 'observador', {
 console.log('');
 console.log('observador -- segundo consumidor (somente leitura)');
 console.log(`  broker ${cfg.mqtt.url}`);
-console.log('  assina os quatro topicos da fronteira e apenas imprime.');
+console.log('  assina os quatro topicos da fronteira e alert/#; apenas imprime.');
 console.log('  Ligar ou desligar este processo nao afeta produtor nem servico.');
 console.log('');
 
@@ -61,13 +62,15 @@ cliente.on('message', (topico, buffer) => {
   const p = bruto.payload;
   let resumo;
 
-  if (p.eventType === 'LeituraUmidadeSolo') {
+  if (p?.eventType === 'AlertaCuidado') {
+    resumo = `${p.eventId} ${p.alertType} ${p.severity} ${p.entityId} correlationId=${p.correlationId}`;
+  } else if (p?.eventType === 'LeituraUmidadeSolo') {
     resumo = `${p.eventId}  valor=${p.value}%${p.replayed ? '  (replayed)' : ''}`;
-  } else if (p.eventType === 'EstadoConectividade') {
+  } else if (p?.eventType === 'EstadoConectividade') {
     resumo = `state=${p.state}  silencio=${p.value !== undefined ? p.value + 'ms' : '-'}`;
-  } else if (p.commandType === 'ComandoIrrigacao') {
+  } else if (p?.commandType === 'ComandoIrrigacao') {
     resumo = `${p.commandId}  ${p.action}  motivo=${p.reason}`;
-  } else if (p.eventType === 'ConfirmacaoAtuacao') {
+  } else if (p?.eventType === 'ConfirmacaoAtuacao') {
     resumo = `${p.commandId}  ${p.result}`;
   } else {
     resumo = JSON.stringify(p).slice(0, 90);

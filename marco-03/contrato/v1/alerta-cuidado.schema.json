@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/alerta-cuidado",
+  "title": "AlertaCuidado v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "eventType", "producerId", "entityId", "alertType", "severity", "message", "correlationId", "issuedAt", "ttlMs"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventId": { "type": "string", "minLength": 1 },
+    "eventType": { "const": "AlertaCuidado" },
+    "producerId": { "const": "servico-irrigacao" },
+    "entityId": { "type": "string", "minLength": 1 },
+    "alertType": { "enum": ["SOLO_SECO", "IRRIGACAO_EXECUTADA", "IRRIGACAO_RECUSADA", "DADO_OBSOLETO", "DISPOSITIVO_OFFLINE", "DISPOSITIVO_RECUPERADO"] },
+    "severity": { "enum": ["INFO", "ATENCAO", "CRITICO"] },
+    "message": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "issuedAt": { "type": "string", "format": "utc-date-time" },
+    "ttlMs": { "type": "integer", "minimum": 1 }
+  }
+}

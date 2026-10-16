@@ -51,6 +51,8 @@ function carregarConfig() {
     cfg.seguranca.exigirAssinatura = env.EXIGIR_ASSINATURA !== '0';
   }
 
+  cfg.alertas = { ttlMs: 60000, ...(cfg.alertas || {}) };
+  if (env.ALERTA_TTL_MS !== undefined) cfg.alertas.ttlMs = Number(env.ALERTA_TTL_MS);
   return cfg;
 }
 
@@ -101,6 +103,8 @@ function topicos(cfg) {
   const base = `${cfg.identidade.prefixoTopico}/vaso/${cfg.identidade.vasoId}`;
   return {
     base,
+    alertaCuidado: `${base}/alert/cuidado`,
+    alertas: `${base}/alert/#`,
     telemetriaSolo: `${base}/telemetry/soil`,
     heartbeat: `${base}/status/heartbeat`,
     comandoIrrigacao: `${base}/command/irrigacao`,
@@ -120,10 +124,17 @@ const ARQUIVOS_SCHEMA = {
   LeituraUmidadeSolo: 'telemetria-solo.schema.json',
   EstadoConectividade: 'estado-conectividade.schema.json',
   ComandoIrrigacao: 'comando-irrigacao.schema.json',
-  ConfirmacaoAtuacao: 'confirmacao-atuacao.schema.json'
+  ConfirmacaoAtuacao: 'confirmacao-atuacao.schema.json',
+  AlertaCuidado: 'alerta-cuidado.schema.json'
 };
 
 const ajv = new Ajv({ allErrors: true, strict: false });
+// Formato UTC com verificação de calendário (Date.parse sozinho normaliza 30/02).
+ajv.addFormat('utc-date-time', valor => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(valor)) return false;
+  const instante = Date.parse(valor);
+  return Number.isFinite(instante) && new Date(instante).toISOString().slice(0,19) === valor.slice(0,19);
+});
 const validadores = {};
 
 for (const [tipo, arquivo] of Object.entries(ARQUIVOS_SCHEMA)) {
