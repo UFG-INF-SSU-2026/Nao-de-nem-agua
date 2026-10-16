@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/comando-irrigacao",
+  "title": "ComandoIrrigacao v1",
+  "description": "Comando emitido pelo servico consumidor para o gateway. Comando NAO e telemetria: produz consequencia fisica, repeticao e perigosa e atuacao tardia deve ser impedida.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "commandId",
+    "idempotencyKey",
+    "commandType",
+    "targetId",
+    "action",
+    "correlationId",
+    "correlationEventTimeMs",
+    "ttlMs",
+    "expiresAtDeviceMs",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "commandId": { "type": "string", "minLength": 1 },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Chave idempotente. O dispositivo guarda as chaves ja aplicadas: reenvio da mesma chave NAO repete o efeito fisico."
+    },
+    "commandType": { "const": "ComandoIrrigacao" },
+    "targetId": { "type": "string", "minLength": 1 },
+    "action": { "enum": ["PULSO_IRRIGACAO", "PARAR_IRRIGACAO"] },
+    "durationMs": { "type": "integer", "minimum": 0, "maximum": 60000 },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "eventId da telemetria que originou esta decisao. Liga comando, evento e confirmacao."
+    },
+    "correlationEventTimeMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "eventTimeMs do evento correlacionado, no RELOGIO DO DISPOSITIVO."
+    },
+    "ttlMs": { "type": "integer", "minimum": 0 },
+    "expiresAtDeviceMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "correlationEventTimeMs + ttlMs. A expiracao e expressa no relogio do dispositivo justamente porque nao ha NTP: o dispositivo compara com o proprio millis() e nao precisa confiar no relogio do servico."
+    },
+    "issuedAt": {
+      "type": "string",
+      "description": "Instante de emissao no relogio do servico, em ISO-8601. Serve para log e auditoria, nao para decidir expiracao."
+    },
+    "reason": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/telemetria-solo",
+  "title": "LeituraUmidadeSolo v1",
+  "description": "Telemetria de umidade do substrato produzida pelo gateway do vaso. Evolui o evento LeituraUmidadeSolo da Atividade 02, acrescentando os campos de identidade exigidos para atravessar a fronteira de comunicacao.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "eventType",
+    "deviceId",
+    "entityId",
+    "bootId",
+    "eventTimeMs",
+    "sequence",
+    "value",
+    "unit",
+    "valid"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+:[a-f0-9]+:[0-9]+$",
+      "description": "Identidade unica do evento: deviceId:bootId:sequence. E a chave de deduplicacao no consumidor."
+    },
+    "eventType": { "const": "LeituraUmidadeSolo" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "entityId": { "type": "string", "minLength": 1 },
+    "bootId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{4,16}$",
+      "description": "Identidade da execucao do dispositivo. Sem NTP, eventTimeMs e sequence reiniciam a cada boot; o bootId distingue execucoes e torna o eventId unico de fato."
+    },
+    "eventTimeMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Relogio do dispositivo (millis desde o boot). NAO e tempo absoluto: nao ha NTP neste recorte."
+    },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "value": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Umidade ficticia do substrato. Faixa validada conforme a Atividade 02, item 4."
+    },
+    "unit": { "const": "pct_simulado" },
+    "valid": {
+      "type": "boolean",
+      "description": "Resultado da validacao local no dispositivo. false indica leitura suspeita (ex.: sensor grudado num extremo)."
+    },
+    "invalidReason": { "type": "string" },
+    "replayed": {
+      "type": "boolean",
+      "default": false,
+      "description": "true quando o evento vem do buffer offline do dispositivo apos reconexao. Evento historico: o consumidor registra e deduplica, mas nao o usa para renovar a validade do dado corrente (politica de eventos atrasados da Atividade 02, item 8)."
+    }
+  }
+}
