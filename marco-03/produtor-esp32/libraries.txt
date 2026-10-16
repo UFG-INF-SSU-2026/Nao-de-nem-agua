@@ -1,0 +1,4 @@
+# Bibliotecas adicionais deste projeto.
+# No Wokwi, instalar pela aba "Library Manager". Sem isso a compilacao falha
+# com: fatal error: PubSubClient.h: No such file or directory
+PubSubClient

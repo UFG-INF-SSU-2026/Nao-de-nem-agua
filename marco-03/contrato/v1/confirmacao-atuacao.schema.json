@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/confirmacao-atuacao",
+  "title": "ConfirmacaoAtuacao v1",
+  "description": "Confirmacao de NEGOCIO emitida pelo dispositivo. Distinta da confirmacao de transporte: um PUBACK do MQTT diz que o pacote chegou, este evento diz o que a regra fez com ele.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventType",
+    "deviceId",
+    "commandId",
+    "correlationId",
+    "result",
+    "appliedAtDeviceMs"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "ConfirmacaoAtuacao" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "bootId": { "type": "string", "pattern": "^[a-f0-9]{4,16}$" },
+    "commandId": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "result": {
+      "enum": [
+        "EXECUTADO",
+        "IGNORADO_DUPLICADO",
+        "REJEITADO_EXPIRADO",
+        "REJEITADO_CONTRATO"
+      ],
+      "description": "EXECUTADO: a atuacao ocorreu. IGNORADO_DUPLICADO: idempotencyKey ja aplicada, efeito nao repetido. REJEITADO_EXPIRADO: chegou depois de expiresAtDeviceMs. REJEITADO_CONTRATO: payload nao interpretavel nesta versao."
+    },
+    "appliedAtDeviceMs": { "type": "integer", "minimum": 0 },
+    "detail": { "type": "string" }
+  }
+}
