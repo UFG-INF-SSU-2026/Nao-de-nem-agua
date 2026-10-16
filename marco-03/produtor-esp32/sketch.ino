@@ -35,16 +35,27 @@
  * 2. SEM NTP: eventTimeMs e millis() -- tempo desde o boot, nao instante
  *    absoluto. E por isso que o prazo de validade do comando chega expresso no
  *    relogio do proprio dispositivo (expiresAtDeviceMs).
- * 3. BROKER PUBLICO SEM TLS NEM AUTENTICACAO: o Wokwi nao alcanca o localhost
- *    da maquina de apresentacao, o que obriga o uso de um broker publico. Em
- *    producao, a Atividade 02 previa MQTT sobre TLS com credenciais por
- *    dispositivo. O topico inclui um sufixo aleatorio apenas para reduzir
- *    colisao com outros usuarios do broker publico -- isso NAO e seguranca.
- * 4. O LED representa a bomba. Nao ha bomba, agua nem realimentacao fisica.
+ * 3. BROKER PUBLICO, SEM SENHA NEM ACL: o Wokwi nao alcanca o localhost da
+ *    maquina de apresentacao, o que obriga o uso de um broker publico -- e
+ *    nele qualquer pessoa pode publicar nos nossos topicos. A seguranca do
+ *    Marco 3 neste caminho e:
+ *      - CANAL: MQTT sobre TLS (porta 8883), conferindo o certificado do
+ *        broker contra a CA raiz fixada abaixo. Ninguem no caminho le ou
+ *        altera o trafego, e o ESP32 sabe que fala com broker.hivemq.com.
+ *      - AUTENTICIDADE: toda mensagem sai assinada com HMAC-SHA256 da chave
+ *        deste dispositivo, e todo comando so e executado se vier assinado
+ *        pelo servico com essa mesma chave. Um comando forjado no broker
+ *        publico recebe REJEITADO_ASSINATURA e a bomba nao liga.
+ *    Usuario/senha e ACL existem apenas no broker local (caminho A).
+ * 4. CHAVE NO FIRMWARE: a chave HMAC esta no codigo porque o Wokwi exige o
+ *    sketch completo. Em producao ficaria na NVS com flash encryption.
+ * 5. O LED representa a bomba. Nao ha bomba, agua nem realimentacao fisica.
  */
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <PubSubClient.h>
+#include "mbedtls/md.h"
 
 // --------------------------------------------------------------------------
 // Pinos
@@ -61,7 +72,36 @@ const char* WIFI_SENHA = "";
 const int   WIFI_CANAL = 6;      // acelera a associacao no simulador
 
 const char* BROKER_HOST = "broker.hivemq.com";
-const int   BROKER_PORTA = 1883;
+const int   BROKER_PORTA = 8883;   // MQTT sobre TLS
+
+/*
+ * CA raiz que assina a cadeia do broker.hivemq.com (Amazon Root CA 1, valida
+ * ate 2038). O ESP32 confere o certificado recebido contra ela e contra o nome
+ * do host: e isso que impede um terceiro de se passar pelo broker. Nao se usa
+ * setInsecure(), que cifraria o canal sem saber com quem.
+ */
+const char* CA_RAIZ_BROKER = R"PEM(
+-----BEGIN CERTIFICATE-----
+MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsF
+ADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1hem9uMRkwFwYDVQQDExBBbWF6
+b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTEL
+MAkGA1UEBhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJv
+b3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALJ4gHHKeNXj
+ca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM
+9O6II8c+6zf1tRn4SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qw
+IFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mjUcAwhmahRWa6
+VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L
+93FcXmn/6pUCyziKrlA4b9v7LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQm
+jgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC
+AYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUA
+A4IBAQCY8jdaQZChGsV2USggNiMOruYou6r4lK5IpDB/G/wkjUu0yKGX9rbxenDI
+U5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUs
+N+gDS63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vv
+o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU
+5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpy
+rqXRfboQnoZsG4q5WTP468SQvvG5
+-----END CERTIFICATE-----
+)PEM";
 
 // --------------------------------------------------------------------------
 // Identidade e contrato
@@ -69,6 +109,14 @@ const int   BROKER_PORTA = 1883;
 const char* DEVICE_ID = "esp32-vaso-01";
 const char* ENTITY_ID = "vaso-01";
 const int   SCHEMA_VERSION = 1;
+
+/*
+ * Chave HMAC deste dispositivo (32 bytes em hex). Deve ser IDENTICA a de
+ * esp32-vaso-01 em marco-03/seguranca/chaves-hmac.json -- e com ela que o servico
+ * confere o que este ESP32 publica e assina os comandos dirigidos a ele.
+ */
+const char* CHAVE_HMAC_HEX = "0b998eb199cc28c1ba6d8098252467512df59e300d2f41bf97865c9614f8ac26";
+uint8_t chaveHmac[32];
 
 /*
  * PREFIXO_TOPICO deve ser IDENTICO ao identidade.prefixoTopico do
@@ -93,7 +141,7 @@ const unsigned long LIMIAR_SILENCIO_MS      = 10000;
 // --------------------------------------------------------------------------
 // Estado
 // --------------------------------------------------------------------------
-WiFiClient wifiCliente;
+WiFiClientSecure wifiCliente;   // TLS: o PubSubClient escreve por cima dele
 PubSubClient mqtt(wifiCliente);
 
 char bootId[9];
@@ -106,7 +154,7 @@ unsigned long ultimaLeituraEmitidaMs = 0;
 bool bombaLigada = false;
 unsigned long fimDoPulsoMs = 0;
 
-char willPayload[256];
+char willPayload[352];
 
 /*
  * Buffer offline.
@@ -151,6 +199,79 @@ void montarTopicos() {
   snprintf(topicoHeartbeat,  sizeof(topicoHeartbeat),  "%s/vaso/%s/status/heartbeat", PREFIXO_TOPICO, ENTITY_ID);
   snprintf(topicoComando,    sizeof(topicoComando),    "%s/vaso/%s/command/irrigacao", PREFIXO_TOPICO, ENTITY_ID);
   snprintf(topicoAck,        sizeof(topicoAck),        "%s/vaso/%s/ack/irrigacao", PREFIXO_TOPICO, ENTITY_ID);
+}
+
+// --------------------------------------------------------------------------
+// Assinatura HMAC-SHA256
+// --------------------------------------------------------------------------
+
+/*
+ * Mesmo formato do lado Node (seguranca/index.js): HMAC de
+ * topico + "\n" + corpo, em hex, anexado como ULTIMO campo: ,"sig":"<64 hex>"}
+ * Assina-se o texto exato que vai pela rede, entao nao importa que este
+ * firmware imprima 20.0 onde o JavaScript imprimiria 20.
+ */
+void carregarChave() {
+  for (int i = 0; i < 32; i++) {
+    char par[3] = { CHAVE_HMAC_HEX[2 * i], CHAVE_HMAC_HEX[2 * i + 1], '\0' };
+    chaveHmac[i] = (uint8_t)strtoul(par, NULL, 16);
+  }
+}
+
+void calcularHmacHex(const char* topico, const char* corpo, size_t tamanhoCorpo, char* saidaHex) {
+  uint8_t resultado[32];
+  mbedtls_md_context_t ctx;
+  mbedtls_md_init(&ctx);
+  mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 1);
+  mbedtls_md_hmac_starts(&ctx, chaveHmac, sizeof(chaveHmac));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)topico, strlen(topico));
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)"\n", 1);
+  mbedtls_md_hmac_update(&ctx, (const unsigned char*)corpo, tamanhoCorpo);
+  mbedtls_md_hmac_finish(&ctx, resultado);
+  mbedtls_md_free(&ctx);
+  for (int i = 0; i < 32; i++) sprintf(saidaHex + 2 * i, "%02x", resultado[i]);
+  saidaHex[64] = '\0';
+}
+
+/*
+ * Recebe o JSON do corpo em `json` (terminado em '}') e acrescenta a assinatura
+ * no proprio buffer. Devolve false se nao couber.
+ */
+bool assinarNoBuffer(const char* topico, char* json, size_t capacidade) {
+  size_t n = strlen(json);
+  if (n < 2 || json[n - 1] != '}' || n + 75 >= capacidade) return false;
+  char sig[65];
+  calcularHmacHex(topico, json, n, sig);
+  snprintf(json + n - 1, capacidade - (n - 1), ",\"sig\":\"%s\"}", sig);
+  return true;
+}
+
+/*
+ * Confere a assinatura de uma mensagem recebida. Comparacao em tempo constante:
+ * uma comparacao que para no primeiro byte diferente vazaria, pelo tempo,
+ * quantos bytes da assinatura estavam certos.
+ */
+bool assinaturaValida(const char* topico, const char* json) {
+  // Sufixo ,"sig":"<64 hex>"} tem 74 caracteres; antes dele, no minimo o '{'.
+  size_t n = strlen(json);
+  if (n < 75) return false;
+  const char* inicio = json + n - 74;  // aponta para a virgula de ,"sig":"
+  if (strncmp(inicio, ",\"sig\":\"", 8) != 0 || strcmp(json + n - 2, "\"}") != 0) return false;
+
+  // Corpo assinado = tudo antes de ,"sig":... seguido de '}'.
+  size_t tamanhoCorpo = inicio - json;
+  char corpo[1024];
+  if (tamanhoCorpo + 2 > sizeof(corpo)) return false;
+  memcpy(corpo, json, tamanhoCorpo);
+  corpo[tamanhoCorpo] = '}';
+  corpo[tamanhoCorpo + 1] = '\0';
+
+  char esperado[65];
+  calcularHmacHex(topico, corpo, tamanhoCorpo + 1, esperado);
+
+  uint8_t diferenca = 0;
+  for (int i = 0; i < 64; i++) diferenca |= (uint8_t)(esperado[i] ^ inicio[8 + i]);
+  return diferenca == 0;
 }
 
 /* Extrai um numero de um campo JSON, sem biblioteca de parsing. */
@@ -209,7 +330,7 @@ bool lerUmidade(float* valorPct) {
 
 void publicarTelemetria(uint32_t seq, unsigned long tempoEventoMs, float valor,
                         bool valida, bool replayed) {
-  char payload[400];
+  char payload[512];
   int n = snprintf(payload, sizeof(payload),
     "{\"schemaVersion\":%d,"
     "\"eventId\":\"%s:%s:%06lu\","
@@ -236,6 +357,10 @@ void publicarTelemetria(uint32_t seq, unsigned long tempoEventoMs, float valor,
   }
   snprintf(payload + n, sizeof(payload) - n, "}");
 
+  if (!assinarNoBuffer(topicoTelemetria, payload, sizeof(payload))) {
+    Serial.println("   ERRO: payload grande demais para assinar -- nao publicado");
+    return;
+  }
   mqtt.publish(topicoTelemetria, payload);
   Serial.print(replayed ? "-> telemetria (replay) " : "-> telemetria ");
   Serial.println(payload);
@@ -245,7 +370,7 @@ void publicarHeartbeat() {
   sequenciaHeartbeat++;
   unsigned long silencio = millis() - ultimaLeituraEmitidaMs;
 
-  char payload[320];
+  char payload[448];
   snprintf(payload, sizeof(payload),
     "{\"schemaVersion\":%d,"
     "\"eventType\":\"EstadoConectividade\","
@@ -263,12 +388,13 @@ void publicarHeartbeat() {
 
   // retained: um assinante que chegue depois conhece o estado corrente
   // imediatamente, sem esperar o proximo ciclo.
+  if (!assinarNoBuffer(topicoHeartbeat, payload, sizeof(payload))) return;
   mqtt.publish(topicoHeartbeat, payload, true);
 }
 
 void publicarAck(const char* commandId, const char* correlationId,
                  const char* resultado, const char* detalhe) {
-  char payload[400];
+  char payload[512];
   snprintf(payload, sizeof(payload),
     "{\"schemaVersion\":%d,"
     "\"eventType\":\"ConfirmacaoAtuacao\","
@@ -282,6 +408,7 @@ void publicarAck(const char* commandId, const char* correlationId,
     SCHEMA_VERSION, DEVICE_ID, bootId, commandId, correlationId,
     resultado, millis(), detalhe);
 
+  if (!assinarNoBuffer(topicoAck, payload, sizeof(payload))) return;
   mqtt.publish(topicoAck, payload);
   Serial.print("<- ack ");
   Serial.println(payload);
@@ -340,7 +467,7 @@ void registrarChave(const char* chave) {
 }
 
 void aoReceberComando(char* topico, byte* dados, unsigned int tamanho) {
-  char json[512];
+  char json[1024];
   unsigned int n = tamanho < sizeof(json) - 1 ? tamanho : sizeof(json) - 1;
   memcpy(json, dados, n);
   json[n] = '\0';
@@ -351,11 +478,24 @@ void aoReceberComando(char* topico, byte* dados, unsigned int tamanho) {
   char commandId[48] = "desconhecido";
   char correlationId[64] = "desconhecido";
   char acao[32] = "";
+  lerCampoTexto(json, "commandId", commandId, sizeof(commandId));
+  lerCampoTexto(json, "correlationId", correlationId, sizeof(correlationId));
+
+  /*
+   * Autenticidade ANTES de qualquer outra verificacao. No broker publico
+   * qualquer pessoa pode publicar neste topico; o que separa o servico de um
+   * atacante e a assinatura feita com a chave deste dispositivo. Quem sofre a
+   * consequencia fisica e o ESP32, entao a ultima barreira fica aqui.
+   */
+  if (!assinaturaValida(topicoComando, json)) {
+    Serial.println("   assinatura AUSENTE ou INVALIDA -- comando recusado, bomba intocada");
+    publicarAck(commandId, correlationId, "REJEITADO_ASSINATURA", "hmac nao confere");
+    return;
+  }
 
   long versao = lerCampoNumerico(json, "schemaVersion", -1);
-  bool temCampos = lerCampoTexto(json, "commandId", commandId, sizeof(commandId)) &&
+  bool temCampos = strcmp(commandId, "desconhecido") != 0 &&
                    lerCampoTexto(json, "action", acao, sizeof(acao));
-  lerCampoTexto(json, "correlationId", correlationId, sizeof(correlationId));
 
   // Versao antes de qualquer outra coisa: um comando de uma versao que este
   // firmware nao entende NAO deve ser interpretado por adivinhacao.
@@ -454,6 +594,9 @@ void montarWillPayload() {
     "\"state\":\"OFFLINE\","
     "\"reason\":\"lwt_conexao_encerrada_sem_disconnect\"}",
     SCHEMA_VERSION, DEVICE_ID, ENTITY_ID, bootId);
+  // Assinada AGORA, no dispositivo: o broker apenas a repassa na queda. Sem a
+  // assinatura, qualquer um poderia publicar um OFFLINE falso para este vaso.
+  assinarNoBuffer(topicoHeartbeat, willPayload, sizeof(willPayload));
 }
 
 bool conectarBroker() {
@@ -502,6 +645,7 @@ void setup() {
   digitalWrite(PIN_LED_STATUS, LOW);
   analogReadResolution(12);
 
+  carregarChave();
   gerarBootId();
   montarTopicos();
   montarWillPayload();
@@ -525,7 +669,10 @@ void setup() {
    * passam disso. Sem este ajuste, publish() falha silenciosamente e a
    * integracao "nao funciona" sem qualquer erro visivel.
    */
-  mqtt.setBufferSize(512);
+  mqtt.setBufferSize(1024);  // comando assinado passa de 512 bytes
+
+  // TLS: confere a cadeia do broker contra a CA raiz e o nome do host.
+  wifiCliente.setCACert(CA_RAIZ_BROKER);
   mqtt.setServer(BROKER_HOST, BROKER_PORTA);
   mqtt.setCallback(aoReceberComando);
   mqtt.setKeepAlive(15);

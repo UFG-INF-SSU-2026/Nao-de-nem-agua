@@ -1,19 +1,22 @@
 {
-  "name": "naodenemagua-marco-02",
+  "name": "naodenemagua-marco-03",
   "version": "1.0.0",
   "private": true,
-  "description": "Marco 2 - fronteira de comunicacao entre o gateway do vaso (produtor) e o servico de irrigacao (consumidor), via MQTT.",
+  "description": "Marco 3 - fronteira produtor-consumidor do Marco 2 com canal TLS, autenticacao por usuario/senha, ACL no broker e assinatura HMAC das mensagens.",
   "scripts": {
+    "seguranca": "node seguranca/gerar.js",
     "broker": "node broker-local/broker.js",
     "servico": "node consumidor-servico/src/main.js",
     "simulador": "node simulador-produtor/src/main.js",
     "observador": "node scripts/observador.js",
-    "teste": "node scripts/teste-integracao.js"
+    "teste": "node scripts/teste-integracao.js",
+    "ataque": "node scripts/ataques.js"
   },
   "dependencies": {
     "aedes": "^0.51.3",
     "ajv": "^8.17.1",
-    "mqtt": "^5.10.1"
+    "mqtt": "^5.10.1",
+    "node-forge": "^1.3.1"
   },
   "engines": {
     "node": ">=20"

@@ -1,9 +1,11 @@
-# Marco 2 — fronteira de comunicação
+# Marco 3 — evolução da fronteira produtor-consumidor
 
-Integração entre **`gateway-vaso`** (produtor) e **`servico-irrigacao`**
-(consumidor), por **MQTT**, com contrato versionado, comando idempotente e
-quatro condições de falha exercitáveis.
+Evolução do Marco 2 (**`gateway-vaso`** → **`servico-irrigacao`**, por **MQTT**,
+com contrato versionado e comando idempotente), agora com **canal TLS**,
+**autenticação por usuário/senha**, **ACL no broker** e **assinatura HMAC** de
+cada mensagem.
 
+- Segurança (canal, identidade, autorização, HMAC) → [`docs/seguranca.md`](docs/seguranca.md)
 - Decisões arquiteturais → [`docs/arquitetura.md`](docs/arquitetura.md)
 - Contrato e payloads → [`docs/contrato.md`](docs/contrato.md)
 - Diagramas → [`docs/diagramas/`](docs/diagramas/)
@@ -15,7 +17,14 @@ quatro condições de falha exercitáveis.
 Requer **Node.js 20+**. Não requer Docker.
 
 ```bash
-cd marco-02 && npm install
+cd marco-03 && npm install
+```
+
+Na primeira vez, gere a CA, o certificado do broker e as senhas de cada
+identidade (esses arquivos **não** vão para o git):
+
+```bash
+npm run seguranca
 ```
 
 Depois, **três terminais**:
@@ -41,9 +50,11 @@ simulador, pressione `s` para secar o solo e observe a decisão acontecer.
 npm run teste
 ```
 
-Sobe broker e serviço, assume o papel do dispositivo e verifica os 20 caminhos
-da fronteira — decisão, deduplicação, contrato, expiração, retry, comando
-expirado, evento histórico e *will message*. Leva cerca de 15 segundos.
+Sobe broker e serviço, assume o papel do dispositivo e verifica 41 caminhos.
+Os do Marco 2 cobrem decisão, deduplicação, contrato, expiração, retry, comando
+expirado, evento histórico e *will message*. Os do Marco 3, nas seções 8 a 12,
+cobrem TLS, usuário/senha, ACL e HMAC no serviço e no dispositivo. Leva cerca
+de 40 segundos.
 
 Use depois de qualquer alteração, inclusive depois da alteração feita ao vivo
 durante a verificação.
@@ -64,8 +75,31 @@ durante a verificação.
 | `p` | pausa a telemetria (silêncio) → expiração da validade |
 | `k` | **mata a conexão sem DISCONNECT** → dispara o LWT |
 | `q` | encerra limpo (sem LWT) |
+| `a` | **ataque:** leitura seca **sem assinatura** → `ASSINATURA_AUSENTE` no serviço |
+| `g` | **ataque:** assina 60% e troca para 20% → `ASSINATURA_INVALIDA` |
+| `o` | **ataque:** publica com `deviceId` de outro dispositivo → broker nega e derruba (reconecta sozinho) |
+| `c` | **ataque:** publica no tópico do vaso-02 → broker nega pela ACL |
 
 No terminal do serviço, `e` imprime o estado corrente.
+
+## Ataques de demonstração
+
+Com broker, serviço e simulador ligados, cada comando faz uma tentativa real e
+mostra a recusa. A recusa aparece também no terminal de quem defende.
+
+| Comando | Ataque | Quem barra |
+|---|---|---|
+| `npm run ataque -- texto-puro` | MQTT sem TLS | broker (`TLS_RECUSADO`) |
+| `npm run ataque -- sem-ca` | cliente que não confia na nossa CA | o próprio cliente |
+| `npm run ataque -- sem-senha` | conexão anônima | broker (`AUTH_RECUSADA`, CONNACK 5) |
+| `npm run ataque -- senha-errada` | senha errada | broker (`AUTH_RECUSADA`, CONNACK 4) |
+| `npm run ataque -- notificador-comanda` | notificador tenta ligar a bomba | broker (`PUBLISH_NEGADO` + desconexão) |
+| `npm run ataque -- vaso-alheio` | gateway assina comandos do vaso-02 | broker (`SUBSCRIBE_NEGADO`) |
+| `npm run ataque -- comando-forjado` | comando assinado sem a chave do serviço | **dispositivo** (`REJEITADO_ASSINATURA`) |
+
+O `comando-forjado` funciona nos dois caminhos. No local, o atacante tem a
+**senha do serviço** (simula vazamento), mas não a chave HMAC. No público, não
+precisa de senha nenhuma. Nos dois casos, a bomba não liga.
 
 ---
 
@@ -73,8 +107,9 @@ No terminal do serviço, `e` imprime o estado corrente.
 
 ### Caminho A — local, offline (padrão)
 
-Broker Aedes em `localhost:1883`, produtor simulado. Determinístico e sem
-internet. **É o caminho recomendado para a demonstração.**
+Broker Aedes em `mqtts://localhost:8883` (só TLS), produtor simulado.
+Determinístico e sem internet. Tem **todas** as camadas: TLS com CA própria,
+usuário/senha, ACL e HMAC. **É o caminho recomendado para a demonstração.**
 
 ### Caminho B — dispositivo real no Wokwi
 
@@ -88,18 +123,23 @@ caminho passa por um broker público e depende de internet.
 3. Aponte o serviço para o mesmo broker:
 
 ```bash
-MQTT_URL=mqtt://broker.hivemq.com:1883 npm run servico
+MQTT_URL=mqtts://broker.hivemq.com:8883 npm run servico
 ```
 
 No PowerShell:
 
 ```powershell
-$env:MQTT_URL="mqtt://broker.hivemq.com:1883"; npm run servico
+$env:MQTT_URL="mqtts://broker.hivemq.com:8883"; npm run servico
 ```
 
-> O broker público é **aberto, sem TLS e sem autenticação**. Qualquer um pode
-> assinar e publicar nesses tópicos. É uma limitação declarada deste marco, não
-> uma decisão de arquitetura — ver `docs/arquitetura.md`, seção 11.
+> O ESP32 conecta por **TLS na porta 8883** e confere o certificado do broker
+> contra a Amazon Root CA 1, fixada no sketch. O broker público não tem senha
+> nem ACL, e qualquer um pode publicar nos nossos tópicos. Por isso, neste
+> caminho, a proteção é o **HMAC**: o serviço só aceita telemetria assinada pelo
+> ESP32, e o ESP32 só executa comando assinado pelo serviço. Para ver na
+> prática, rode `MQTT_URL=mqtts://broker.hivemq.com:8883 npm run ataque -- comando-forjado`
+> com o ESP32 ligado: o LED da bomba não acende e o Serial mostra
+> `REJEITADO_ASSINATURA`. Ver `docs/seguranca.md`.
 
 ---
 
@@ -137,7 +177,8 @@ Nenhuma alteração de comportamento exige editar código. Tudo está em
 LIMIAR_LIGA=45 npm run servico      # bomba liga com solo mais úmido
 VALIDADE_MS=3000 npm run servico    # dado expira mais cedo
 COOLDOWN_MS=2000 npm run servico    # pulsos mais frequentes
-MQTT_URL=mqtt://broker.hivemq.com:1883 npm run servico
+MQTT_URL=mqtts://broker.hivemq.com:8883 npm run servico
+EXIGIR_ASSINATURA=0 npm run servico # desliga o HMAC: mostra o ataque 'a' passando
 ```
 
 ---
@@ -145,10 +186,15 @@ MQTT_URL=mqtt://broker.hivemq.com:1883 npm run servico
 ## Estrutura
 
 ```
-marco-02/
+marco-03/
 ├── config.json                 configuração única dos três componentes
+├── seguranca/
+│   ├── index.js                TLS, senha (scrypt), ACL e HMAC
+│   ├── gerar.js                `npm run seguranca`: CA, certificado, senhas
+│   ├── acl.json                identidades e papéis (o que cada um publica/assina)
+│   └── chaves-hmac.json        chaves de demonstração por dispositivo
 ├── contrato/
-│   ├── index.js                carregamento, validação (ajv) e tópicos
+│   ├── index.js                carregamento, validação (ajv), tópicos e conexão segura
 │   └── v1/*.schema.json        os quatro schemas do contrato
 ├── produtor-esp32/             PRODUTOR — firmware Wokwi (caminho B)
 ├── simulador-produtor/         PRODUTOR — substituto declarado (caminho A)
@@ -159,9 +205,10 @@ marco-02/
 │   ├── src/decisao.js          histerese, debounce, cooldown, comando
 │   └── src/log.js              log legível + eventos.jsonl
 ├── scripts/
-│   ├── teste-integracao.js     verificação automática dos 20 caminhos
+│   ├── teste-integracao.js     verificação automática dos 41 caminhos
+│   ├── ataques.js              `npm run ataque -- <nome>`: ataques de demonstração
 │   └── observador.js           segundo consumidor
-└── docs/                       arquitetura, contrato e diagramas
+└── docs/                       arquitetura, contrato, segurança e diagramas
 ```
 
 ---

@@ -1,0 +1,52 @@
+{
+  "_comment": "Politica de identidades e autorizacao do broker local (caminho A). Cada identidade autentica com usuario/senha e recebe um PAPEL; o papel define o que ela pode publicar e assinar. {prefixo} e {vasoId} sao substituidos ao carregar. Esta lista e tambem a fonte das credenciais geradas por `npm run seguranca`.",
+
+  "identidades": {
+    "sim-vaso-01":       { "papel": "gateway", "deviceId": "sim-vaso-01",   "vasoId": "vaso-01" },
+    "esp32-vaso-01":     { "papel": "gateway", "deviceId": "esp32-vaso-01", "vasoId": "vaso-01" },
+    "servico-irrigacao": { "papel": "servico" },
+    "notificador":       { "papel": "notificador" },
+    "observador":        { "papel": "observador" }
+  },
+
+  "papeis": {
+    "gateway": {
+      "_comment": "Amarrado ao PROPRIO vaso: publica apenas a sua telemetria, o seu heartbeat e os seus acks, e assina apenas os comandos dirigidos a ele. verificarDeviceId: o broker confere que o deviceId dentro do payload e o da identidade autenticada.",
+      "publica": [
+        "{prefixo}/vaso/{vasoId}/telemetry/soil",
+        "{prefixo}/vaso/{vasoId}/status/heartbeat",
+        "{prefixo}/vaso/{vasoId}/ack/irrigacao"
+      ],
+      "assina": [
+        "{prefixo}/vaso/{vasoId}/command/irrigacao"
+      ],
+      "verificarDeviceId": true
+    },
+    "servico": {
+      "_comment": "Unico papel que emite comando. Publica tambem os alertas do novo ciclo produtor-consumidor.",
+      "publica": [
+        "{prefixo}/vaso/+/command/irrigacao",
+        "{prefixo}/vaso/+/alert/#"
+      ],
+      "assina": [
+        "{prefixo}/vaso/+/telemetry/#",
+        "{prefixo}/vaso/+/status/#",
+        "{prefixo}/vaso/+/ack/#"
+      ]
+    },
+    "notificador": {
+      "_comment": "Consumidor dos alertas. Somente leitura: nao publica nada, e em especial nao comanda a bomba.",
+      "publica": [],
+      "assina": [
+        "{prefixo}/vaso/+/alert/#"
+      ]
+    },
+    "observador": {
+      "_comment": "Segundo consumidor de diagnostico. Le tudo, nao publica nada.",
+      "publica": [],
+      "assina": [
+        "{prefixo}/#"
+      ]
+    }
+  }
+}

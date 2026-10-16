@@ -40,6 +40,20 @@ ramo de forma distinta quando houver autenticação.
 O nome do tópico é parte da interface: mudá-lo quebra assinantes que você não
 conhece.
 
+> **Marco 3.** Essa separação por ramo é exatamente o que a ACL usa: o gateway só
+> publica em `telemetry`, `status` e `ack` do próprio vaso e só assina `command`
+> do próprio vaso; só o serviço publica em `command`. Ver [`seguranca.md`](seguranca.md).
+
+### Assinatura (`sig`) — Marco 3
+
+Os quatro eventos aceitam um campo opcional `sig`, que é **sempre o último** do
+JSON: HMAC-SHA256 em hex de `topico + "\n" + corpo`, onde `corpo` é o texto do
+JSON sem o campo `sig`. O dispositivo assina o que publica, e o serviço assina o
+comando com a chave do dispositivo de destino. No schema o campo é opcional, para
+manter a v1 compatível; a obrigatoriedade vem da política
+`seguranca.exigirAssinatura`. `ConfirmacaoAtuacao.result` ganhou
+`REJEITADO_ASSINATURA`. Detalhes em [`seguranca.md`](seguranca.md), seção 2.4.
+
 ---
 
 ## `LeituraUmidadeSolo` — telemetria

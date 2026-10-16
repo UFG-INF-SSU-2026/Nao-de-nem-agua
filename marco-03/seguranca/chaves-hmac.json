@@ -1,0 +1,8 @@
+{
+  "_comment": "Chaves HMAC-SHA256 por dispositivo, compartilhadas entre o dispositivo e o servico. O dispositivo assina telemetria, heartbeat, will message e ack; o servico assina os comandos dirigidos ao dispositivo com a chave DELE. LIMITACAO DECLARADA: sao chaves de DEMONSTRACAO e estao versionadas porque o sketch do Wokwi precisa conte-las. Em producao seriam provisionadas por dispositivo e guardadas em flash criptografada (NVS + flash encryption do ESP32), nunca no repositorio.",
+
+  "dispositivos": {
+    "sim-vaso-01":   { "vasoId": "vaso-01", "chave": "f0a6fe1909da51437da631971f8e34935ab2747489c565128c3da2304c643903" },
+    "esp32-vaso-01": { "vasoId": "vaso-01", "chave": "0b998eb199cc28c1ba6d8098252467512df59e300d2f41bf97865c9614f8ac26" }
+  }
+}

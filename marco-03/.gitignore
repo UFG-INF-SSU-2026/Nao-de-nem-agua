@@ -1,3 +1,8 @@
 node_modules/
 eventos.jsonl
 *.log
+
+# Material de seguranca gerado por `npm run seguranca` -- segredos, nunca versionar
+seguranca/certs/
+seguranca/credenciais.json
+seguranca/segredos.json

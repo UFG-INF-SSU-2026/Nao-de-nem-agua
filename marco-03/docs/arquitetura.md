@@ -339,10 +339,10 @@ fronteira continua íntegra.
 1. **Não há aquisição física.** Potenciômetro no ESP32, teclado no simulador.
    Nenhuma umidade real foi medida.
 2. **Sem NTP.** `eventTimeMs` é tempo desde o boot, não instante absoluto.
-3. **Sem TLS e sem autenticação.** O broker público é aberto; qualquer um pode
-   assinar e publicar nos tópicos. A Atividade 02 previa MQTT sobre TLS com
-   credenciais por dispositivo, e isso **não** foi implementado neste marco. O
-   sufixo do tópico reduz colisão, não é segurança.
+3. ~~**Sem TLS e sem autenticação.**~~ **Resolvido no Marco 3:** TLS nos dois
+   caminhos, usuário/senha e ACL no broker local, e HMAC por mensagem nos dois
+   caminhos. Ver [`seguranca.md`](seguranca.md), que traz também as limitações
+   que restam.
 4. **Um vaso apenas.** O contrato prevê `vasoId` no tópico, mas o serviço mantém
    estado de um vaso só.
 5. **Estado em memória.** Reiniciar o serviço perde o estado corrente; apenas o

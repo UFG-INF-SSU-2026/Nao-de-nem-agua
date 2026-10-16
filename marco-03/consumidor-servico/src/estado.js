@@ -50,6 +50,7 @@ class EstadoVaso {
 
     this.estado = ESTADOS.DESCONHECIDO;
     this.bootId = null;
+    this.deviceId = null; // dispositivo autenticado (HMAC) que alimenta este vaso
 
     this.ultimoValor = null;
     this.ultimoEventId = null;
@@ -137,6 +138,7 @@ class EstadoVaso {
 
     const houveDescontinuidade =
       this.bootId !== evento.bootId ||
+      this.deviceId !== evento.deviceId ||
       this.estado === ESTADOS.DADO_OBSOLETO ||
       this.estado === ESTADOS.LEITURA_INVALIDA ||
       this.estado === ESTADOS.DISPOSITIVO_OFFLINE ||
@@ -145,6 +147,7 @@ class EstadoVaso {
     if (houveDescontinuidade) this.consecutivasSecas = 0;
 
     this.bootId = evento.bootId;
+    this.deviceId = evento.deviceId;
     this.ultimoValor = evento.value;
     this.ultimoEventId = evento.eventId;
     this.ultimoEventTimeMs = evento.eventTimeMs;
@@ -178,6 +181,7 @@ class EstadoVaso {
     return {
       vasoId: this.vasoId,
       estado: this.estado,
+      deviceId: this.deviceId,
       bootId: this.bootId,
       valor: this.ultimoValor,
       idadeMs: this.idadeMs(agora),

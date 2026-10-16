@@ -18,14 +18,17 @@ const { spawn } = require('child_process');
 const path = require('path');
 const mqtt = require('mqtt');
 const crypto = require('crypto');
+const contrato = require('../contrato');
+const seguranca = require('../seguranca');
 
 const RAIZ = path.resolve(__dirname, '..');
-const PORTA = 1884; // porta propria, para nao colidir com um broker de demo aberto
+const PORTA = 8884; // porta propria, para nao colidir com um broker de demo aberto
 
 const AMBIENTE = {
   ...process.env,
   BROKER_PORT: String(PORTA),
-  MQTT_URL: `mqtt://localhost:${PORTA}`,
+  MQTT_URL: `mqtts://localhost:${PORTA}`,
+  EXIGIR_ASSINATURA: '1',
   VALIDADE_MS: '2500',
   COOLDOWN_MS: '1200',
   COMANDO_TTL_MS: '2000',
@@ -34,7 +37,10 @@ const AMBIENTE = {
   LIMIAR_DESLIGA: '50'
 };
 
-const DEVICE_ID = 'teste-vaso-01';
+// O teste assume a identidade do gateway simulado: mesma senha, mesma ACL,
+// mesma chave HMAC.
+const DEVICE_ID = 'sim-vaso-01';
+const CHAVE = seguranca.dispositivo(DEVICE_ID).chave;
 const BOOT_ID = crypto.randomBytes(3).toString('hex');
 const PREFIXO = 'naodenemagua/v1/vaso/vaso-01';
 const T = {
@@ -62,6 +68,48 @@ function verificar(descricao, condicao, detalhe) {
     console.log(`  FALHA ${descricao}${detalhe ? ` -- ${detalhe}` : ''}`);
     falhas.push(descricao);
   }
+}
+
+/* Conecta ao broker de teste com TLS + usuario/senha de uma identidade. */
+function conectarComo(identidade, opcoes) {
+  return contrato.conectar({ mqtt: { url: AMBIENTE.MQTT_URL } }, identidade, {
+    clientId: `${identidade}-teste-${crypto.randomBytes(2).toString('hex')}`,
+    ...(opcoes || {})
+  });
+}
+
+/*
+ * Tenta conectar e informa o desfecho, sem reconexao automatica.
+ * Devolve { conectou, erro, cliente }.
+ */
+function tentarConectar(url, opcoes, ms) {
+  return new Promise((resolve) => {
+    const c = mqtt.connect(url, { reconnectPeriod: 0, connectTimeout: ms || 2500, ...opcoes });
+    let fim = false;
+    const terminar = (r) => {
+      if (fim) return;
+      fim = true;
+      clearTimeout(t);
+      if (!r.conectou) c.end(true);
+      resolve({ ...r, cliente: c });
+    };
+    const t = setTimeout(() => terminar({ conectou: false, erro: 'sem CONNACK no prazo' }), (ms || 2500) + 500);
+    c.on('connect', () => terminar({ conectou: true }));
+    c.on('error', (e) => terminar({ conectou: false, erro: e.code !== undefined ? `${e.code} ${e.message}` : e.message }));
+    c.on('close', () => terminar({ conectou: false, erro: 'conexao encerrada' }));
+  });
+}
+
+/* Conexao "crua" a uma identidade, com controle total das opcoes. */
+function opcoesDe(identidade, extras) {
+  return {
+    ca: seguranca.caPropria(),
+    rejectUnauthorized: true,
+    username: identidade,
+    password: seguranca.senhaDe(identidade),
+    clientId: `${identidade}-teste-${crypto.randomBytes(2).toString('hex')}`,
+    ...(extras || {})
+  };
 }
 
 function subir(rotulo, script) {
@@ -120,20 +168,24 @@ function leitura(valor, extras) {
 async function main() {
   console.log('');
   console.log('Teste de integracao da fronteira produtor <-> consumidor');
-  console.log(`  broker de teste  mqtt://localhost:${PORTA}`);
+  console.log(`  broker de teste  ${AMBIENTE.MQTT_URL} (TLS + usuario/senha + ACL)`);
   console.log(`  validade=${AMBIENTE.VALIDADE_MS}ms cooldown=${AMBIENTE.COOLDOWN_MS}ms ttl=${AMBIENTE.COMANDO_TTL_MS}ms`);
   console.log('');
+
+  // Certificados e senhas precisam existir antes de qualquer processo subir.
+  seguranca.garantirMaterial();
 
   subir('broker', 'broker-local/broker.js');
   await esperar(1200);
   subir('servico', 'consumidor-servico/src/main.js');
   await esperar(1800);
 
-  const cliente = mqtt.connect(AMBIENTE.MQTT_URL, {
+  const cliente = conectarComo(DEVICE_ID, {
     clientId: `${DEVICE_ID}-${BOOT_ID}`,
+    reconnectPeriod: 0,
     will: {
       topic: T.heartbeat,
-      payload: JSON.stringify({
+      payload: seguranca.assinar(CHAVE, T.heartbeat, {
         schemaVersion: 1,
         eventType: 'EstadoConectividade',
         deviceId: DEVICE_ID,
@@ -149,6 +201,15 @@ async function main() {
 
   await new Promise((r) => cliente.on('connect', r));
   cliente.subscribe(T.comando, { qos: 1 });
+
+  /*
+   * Comandos de teste (retry e expirado) precisam ser publicados por quem a ACL
+   * autoriza a comandar: a identidade do servico. O gateway nao pode.
+   */
+  const comandante = conectarComo('servico-irrigacao', { reconnectPeriod: 0 });
+  await new Promise((r) => comandante.on('connect', r));
+  const publicarComando = (cmd) =>
+    new Promise((r) => comandante.publish(T.comando, seguranca.assinar(CHAVE, T.comando, cmd), { qos: 1 }, r));
 
   /*
    * Papel do dispositivo na recepcao de comandos: idempotencia e expiracao,
@@ -172,11 +233,17 @@ async function main() {
       detail: detalhe || ''
     };
     acksEnviados.push(ack);
-    cliente.publish(T.ack, JSON.stringify(ack), { qos: 1 });
+    cliente.publish(T.ack, seguranca.assinar(CHAVE, T.ack, ack), { qos: 1 });
     return ack;
   };
 
-  const tratarComando = (cmd) => {
+  const comandosSemAssinaturaValida = [];
+
+  const tratarComando = (cmd, texto) => {
+    if (!seguranca.verificarAssinatura(CHAVE, T.comando, texto).ok) {
+      comandosSemAssinaturaValida.push(cmd);
+      return responder(cmd, 'REJEITADO_ASSINATURA', 'hmac');
+    }
     if (chavesAplicadas.has(cmd.idempotencyKey)) {
       return responder(cmd, 'IGNORADO_DUPLICADO', 'idempotencyKey ja aplicada');
     }
@@ -189,13 +256,14 @@ async function main() {
 
   cliente.on('message', (topico, buf) => {
     if (topico !== T.comando) return;
-    const cmd = JSON.parse(buf.toString());
+    const texto = buf.toString();
+    const cmd = JSON.parse(texto);
     comandosRecebidos.push(cmd);
-    tratarComando(cmd);
+    tratarComando(cmd, texto);
   });
 
   const publicar = (payload) =>
-    new Promise((r) => cliente.publish(T.telemetria, JSON.stringify(payload), { qos: 1 }, r));
+    new Promise((r) => cliente.publish(T.telemetria, seguranca.assinar(CHAVE, T.telemetria, payload), { qos: 1 }, r));
 
   // -------------------------------------------------------------------------
   console.log('1. Estado normal -- solo umido nao deve gerar comando');
@@ -234,6 +302,8 @@ async function main() {
     verificar('expiracao expressa no relogio do dispositivo',
       cmd1.expiresAtDeviceMs === cmd1.correlationEventTimeMs + cmd1.ttlMs,
       `${cmd1.expiresAtDeviceMs} != ${cmd1.correlationEventTimeMs} + ${cmd1.ttlMs}`);
+    verificar('comando chega assinado pelo servico com a chave do dispositivo',
+      comandosSemAssinaturaValida.length === 0, `${comandosSemAssinaturaValida.length} sem HMAC valido`);
   }
 
   // -------------------------------------------------------------------------
@@ -311,7 +381,8 @@ async function main() {
     // O TTL e recalculado para que a rejeicao observada seja por duplicata,
     // e nao por expiracao -- sao falhas distintas.
     const repetido = { ...cmdParaRepetir, expiresAtDeviceMs: millis() + 5000 };
-    await new Promise((r) => cliente.publish(T.comando, JSON.stringify(repetido), { qos: 1 }, r));
+    delete repetido.sig;
+    await publicarComando(repetido);
     await esperar(500);
     const novos = acksEnviados.slice(acksAntes);
     verificar('retry responde IGNORADO_DUPLICADO',
@@ -344,7 +415,7 @@ async function main() {
       issuedAt: new Date().toISOString(),
       reason: 'teste_expiracao'
     };
-    await new Promise((r) => cliente.publish(T.comando, JSON.stringify(expirado), { qos: 1 }, r));
+    await publicarComando(expirado);
     await esperar(500);
     const novos = acksEnviados.slice(acksAntes);
     verificar('comando com prazo vencido responde REJEITADO_EXPIRADO',
@@ -371,8 +442,11 @@ async function main() {
   await esperar(1500);
   verificar('conexao encerrada abruptamente (LWT publicado pelo broker)', true);
 
+  await secaoSeguranca(comandante);
+
   // -------------------------------------------------------------------------
   console.log('');
+  comandante.end(true);
   encerrarTudo();
   await esperar(400);
 
@@ -385,6 +459,193 @@ async function main() {
     for (const f of falhas) console.log(`  - ${f}`);
     console.log('');
     process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Marco 3 -- seguranca: canal, identidade, autorizacao e autenticidade
+// ---------------------------------------------------------------------------
+
+async function secaoSeguranca(comandante) {
+  const url = AMBIENTE.MQTT_URL;
+
+  // -------------------------------------------------------------------------
+  console.log('8. Canal -- so TLS, e so com o broker certo');
+  // -------------------------------------------------------------------------
+  {
+    const r = await tentarConectar(`mqtt://localhost:${PORTA}`, opcoesDe('observador'));
+    verificar('MQTT em texto puro na porta do broker NAO conecta', !r.conectou, r.erro);
+  }
+  {
+    // Sem a nossa CA, o cliente nao tem como saber que o certificado e legitimo.
+    const r = await tentarConectar(url, opcoesDe('observador', { ca: undefined }));
+    verificar('cliente que nao confia na CA propria recusa o broker (anti-MITM)', !r.conectou, r.erro);
+  }
+
+  // -------------------------------------------------------------------------
+  console.log('9. Identidade -- o broker so aceita quem ele conhece');
+  // -------------------------------------------------------------------------
+  {
+    const r = await tentarConectar(url, opcoesDe('observador', { username: undefined, password: undefined }));
+    verificar('conexao sem usuario/senha e recusada', !r.conectou, r.erro);
+  }
+  {
+    const r = await tentarConectar(url, opcoesDe('sim-vaso-01', { password: 'senha-errada' }));
+    verificar('senha errada e recusada', !r.conectou, r.erro);
+  }
+  {
+    const r = await tentarConectar(url, opcoesDe('servico-irrigacao', { username: 'intruso', password: 'x' }));
+    verificar('usuario inexistente e recusado', !r.conectou, r.erro);
+  }
+  {
+    // Identidade valida tentando usar o clientId de outra -- tomaria a sessao dela.
+    const r = await tentarConectar(url, opcoesDe('observador', { clientId: 'servico-irrigacao-sequestro' }));
+    verificar('clientId de outra identidade e recusado', !r.conectou, r.erro);
+  }
+  {
+    const r = await tentarConectar(url, opcoesDe('notificador'));
+    verificar('identidade valida conecta (controle positivo)', r.conectou, r.erro);
+    r.cliente.end(true);
+  }
+
+  // -------------------------------------------------------------------------
+  console.log('10. Autorizacao -- cada identidade so faz o que o seu papel permite');
+  // -------------------------------------------------------------------------
+  // Vigia o topico de comando com a identidade do gateway (a unica que o assina).
+  const vigia = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
+  const vistosNoComando = [];
+  await new Promise((r) => vigia.subscribe(T.comando, { qos: 1 }, r));
+  vigia.on('message', (t, b) => vistosNoComando.push(b.toString()));
+
+  {
+    const n = (await tentarConectar(url, opcoesDe('notificador'))).cliente;
+    const caiu = new Promise((r) => n.on('close', () => r(true)));
+    n.publish(T.comando, JSON.stringify({ forjado: true, action: 'PULSO_IRRIGACAO' }), { qos: 1 });
+    const derrubado = await Promise.race([caiu, esperar(1500).then(() => false)]);
+    await esperar(300);
+    verificar('notificador NAO consegue publicar comando', vistosNoComando.length === 0,
+      `${vistosNoComando.length} mensagem(ns) chegaram ao topico de comando`);
+    verificar('broker derruba quem publica fora da ACL', derrubado);
+    n.end(true);
+  }
+  {
+    const o = (await tentarConectar(url, opcoesDe('observador'))).cliente;
+    o.publish(T.telemetria, JSON.stringify({ forjado: true }), { qos: 1 });
+    await esperar(500);
+    verificar('observador (somente leitura) NAO publica', o.connected === false, 'continuou conectado');
+    o.end(true);
+  }
+  {
+    const g = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
+    const concedido = await new Promise((r) =>
+      g.subscribe('naodenemagua/v1/vaso/vaso-02/command/irrigacao', { qos: 1 }, (e) => r(e)));
+    // O mqtt.js entrega o SUBACK 0x80 como erro "Subscribe error".
+    verificar('gateway NAO assina comandos de outro vaso (SUBACK 0x80)',
+      concedido && /Subscribe error/.test(concedido.message), concedido ? concedido.message : 'assinatura concedida');
+    const curinga = await new Promise((r) =>
+      g.subscribe('naodenemagua/v1/vaso/+/command/irrigacao', { qos: 1 }, (e) => r(e)));
+    verificar('gateway NAO assina comandos de todos os vasos por curinga',
+      curinga && /Subscribe error/.test(curinga.message), curinga ? curinga.message : 'assinatura concedida');
+    g.end(true);
+  }
+  {
+    const g = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
+    const alheio = 'naodenemagua/v1/vaso/vaso-02/telemetry/soil';
+    g.publish(alheio, seguranca.assinar(CHAVE, alheio, leitura(20)), { qos: 1 });
+    await esperar(500);
+    verificar('gateway NAO publica telemetria de outro vaso', g.connected === false, 'continuou conectado');
+    g.end(true);
+  }
+  {
+    const g = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
+    g.publish(T.telemetria, JSON.stringify({ ...leitura(20), deviceId: 'esp32-vaso-01' }), { qos: 1 });
+    await esperar(500);
+    verificar('gateway NAO publica com deviceId de outro dispositivo', g.connected === false, 'continuou conectado');
+    g.end(true);
+  }
+
+  // -------------------------------------------------------------------------
+  console.log('11. Autenticidade (HMAC) -- o servico so decide sobre mensagem assinada');
+  // -------------------------------------------------------------------------
+  {
+    const g = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
+    const pub = (texto) => new Promise((r) => g.publish(T.telemetria, texto, { qos: 1 }, r));
+
+    // Tres leituras secas SEM assinatura: bastariam para irrigar, se aceitas.
+    for (let i = 0; i < 3; i++) await pub(JSON.stringify(leitura(20)));
+    await esperar(600);
+    verificar('leituras secas sem assinatura NAO geram comando', vistosNoComando.length === 0,
+      `${vistosNoComando.length} comando(s)`);
+
+    // Tres leituras assinadas como 60% e adulteradas para 20% depois.
+    for (let i = 0; i < 3; i++) {
+      await pub(seguranca.assinar(CHAVE, T.telemetria, leitura(60)).replace('"value":60', '"value":20'));
+    }
+    await esperar(600);
+    verificar('leituras adulteradas apos assinar NAO geram comando', vistosNoComando.length === 0,
+      `${vistosNoComando.length} comando(s)`);
+
+    // Assinadas com a chave ERRADA (um atacante que conhece o formato, nao a chave).
+    const chaveFalsa = crypto.randomBytes(32).toString('hex');
+    for (let i = 0; i < 3; i++) await pub(seguranca.assinar(chaveFalsa, T.telemetria, leitura(20)));
+    await esperar(600);
+    verificar('leituras assinadas com chave errada NAO geram comando', vistosNoComando.length === 0,
+      `${vistosNoComando.length} comando(s)`);
+
+    // Controle positivo: as mesmas tres leituras, assinadas de verdade.
+    await esperar(Number(AMBIENTE.COOLDOWN_MS));
+    for (let i = 0; i < 3; i++) {
+      await pub(seguranca.assinar(CHAVE, T.telemetria, leitura(20)));
+      await esperar(150);
+    }
+    await esperar(700);
+    verificar('as mesmas leituras, assinadas de verdade, geram comando (controle positivo)',
+      vistosNoComando.length >= 1, 'nenhum comando');
+    g.end(true);
+  }
+  vigia.end(true);
+
+  // -------------------------------------------------------------------------
+  console.log('12. Ultima barreira -- o dispositivo recusa comando nao assinado pelo servico');
+  // -------------------------------------------------------------------------
+  {
+    // O simulador real e o dispositivo aqui: o teste so forja o comando.
+    subir('simulador', 'simulador-produtor/src/main.js');
+    await esperar(1500);
+
+    const acks = [];
+    await new Promise((r) => comandante.subscribe(T.ack, { qos: 1 }, r));
+    comandante.on('message', (t, b) => {
+      if (t === T.ack) acks.push(JSON.parse(b.toString()));
+    });
+
+    const forjado = {
+      schemaVersion: 1,
+      commandId: 'cmd-forjado',
+      idempotencyKey: 'cmd-forjado',
+      commandType: 'ComandoIrrigacao',
+      targetId: 'vaso-01',
+      action: 'PULSO_IRRIGACAO',
+      durationMs: 60000,
+      correlationId: 'forjado:0:0',
+      correlationEventTimeMs: 0,
+      ttlMs: 9999999,
+      expiresAtDeviceMs: 9999999,
+      reason: 'ataque'
+    };
+    const chaveFalsa = crypto.randomBytes(32).toString('hex');
+    comandante.publish(T.comando, seguranca.assinar(chaveFalsa, T.comando, forjado), { qos: 1 });
+    comandante.publish(T.comando, JSON.stringify({ ...forjado, commandId: 'cmd-sem-sig', idempotencyKey: 'cmd-sem-sig' }), { qos: 1 });
+    await esperar(1000);
+
+    const doForjado = acks.filter((a) => a.commandId === 'cmd-forjado');
+    const doSemSig = acks.filter((a) => a.commandId === 'cmd-sem-sig');
+    verificar('comando com assinatura falsa -> REJEITADO_ASSINATURA',
+      doForjado.length > 0 && doForjado.every((a) => a.result === 'REJEITADO_ASSINATURA'),
+      doForjado.map((a) => a.result).join(',') || 'nenhum ack');
+    verificar('comando sem assinatura -> REJEITADO_ASSINATURA',
+      doSemSig.length > 0 && doSemSig.every((a) => a.result === 'REJEITADO_ASSINATURA'),
+      doSemSig.map((a) => a.result).join(',') || 'nenhum ack');
   }
 }
 

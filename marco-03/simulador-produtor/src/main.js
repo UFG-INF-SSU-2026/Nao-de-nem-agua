@@ -33,15 +33,26 @@
  *   q         encerra limpo (DISCONNECT, sem LWT)
  */
 
-const mqtt = require('mqtt');
 const crypto = require('crypto');
 const contrato = require('../../contrato');
+const seguranca = require('../../seguranca');
 
 const cfg = contrato.carregarConfig();
 const topicos = contrato.topicos(cfg);
 
 const DEVICE_ID = cfg.identidade.deviceIdSimulador;
 const ENTITY_ID = cfg.identidade.vasoId;
+
+/*
+ * Chave HMAC deste dispositivo. Tudo o que ele publica sai assinado, e todo
+ * comando que ele recebe precisa vir assinado pelo servico com esta mesma chave.
+ */
+const CHAVE = seguranca.dispositivo(DEVICE_ID).chave;
+
+/* Publica um objeto assinado. O topico entra na assinatura. */
+function publicarAssinado(topico, objeto, opcoes) {
+  cliente.publish(topico, seguranca.assinar(CHAVE, topico, objeto), opcoes);
+}
 
 /*
  * bootId: identidade desta execucao.
@@ -75,9 +86,14 @@ function millis() {
  * o mecanismo que torna a morte do dispositivo observavel de imediato, sem
  * esperar que a validade do dado expire por tempo.
  */
+/*
+ * A will message tambem e assinada: e o dispositivo que a escreve, no CONNECT,
+ * e o broker so a repassa. Sem isso, qualquer um poderia publicar um OFFLINE
+ * falso e revogar a irrigacao de um vaso alheio.
+ */
 const will = {
   topic: topicos.heartbeat,
-  payload: JSON.stringify({
+  payload: seguranca.assinar(CHAVE, topicos.heartbeat, {
     schemaVersion: 1,
     eventType: 'EstadoConectividade',
     deviceId: DEVICE_ID,
@@ -90,11 +106,13 @@ const will = {
   retain: true
 };
 
-const cliente = mqtt.connect(cfg.mqtt.url, {
+/*
+ * Identidade = deviceId. No broker local, TLS + usuario/senha, e a ACL so deixa
+ * este gateway publicar nos topicos do PROPRIO vaso.
+ */
+const cliente = contrato.conectar(cfg, DEVICE_ID, {
   clientId: `${DEVICE_ID}-${BOOT_ID}`,
   clean: true,
-  reconnectPeriod: 2000,
-  connectTimeout: 8000,
   will
 });
 
@@ -107,8 +125,11 @@ console.log(`  publica     ${topicos.telemetriaSolo}`);
 console.log(`              ${topicos.heartbeat}  (retained + LWT)`);
 console.log(`  assina      ${topicos.comandoIrrigacao}`);
 console.log('');
+console.log(`  seguranca   ${contrato.brokerLocal(cfg.mqtt.url) ? 'TLS + usuario/senha + ACL' : 'TLS (broker publico, sem senha)'} + HMAC`);
+console.log('');
 console.log('  teclas: -/+ umidade  s seco  m molhado  d duplicar  x fora-contrato');
 console.log('          v versao-2  i invalida  p pausar  k matar(LWT)  q sair');
+console.log('  ataques: a sem-assinatura  g adulterada  o deviceId-alheio  c vaso-alheio');
 console.log('');
 
 cliente.on('connect', () => {
@@ -144,7 +165,7 @@ function montarLeitura(opcoes) {
 }
 
 function publicarLeitura(evento, etiqueta) {
-  cliente.publish(topicos.telemetriaSolo, JSON.stringify(evento), { qos: cfg.mqtt.qos });
+  publicarAssinado(topicos.telemetriaSolo, evento, { qos: cfg.mqtt.qos });
   ultimaLeituraEmMs = millis();
   console.log(
     `[${evento.eventTimeMs}ms] -> telemetria ${evento.eventId} valor=${evento.value}%` +
@@ -188,7 +209,7 @@ setInterval(() => {
     unit: 'ms_desde_ultimo_evento',
     state: silencio > cfg.regra.validadeMs ? 'SILENCIOSO' : 'ATIVO'
   };
-  cliente.publish(topicos.heartbeat, JSON.stringify(hb), {
+  publicarAssinado(topicos.heartbeat, hb, {
     qos: cfg.mqtt.qos,
     retain: true
   });
@@ -204,6 +225,19 @@ let timerPulso = null;
 
 cliente.on('message', (topico, buffer) => {
   if (topico !== topicos.comandoIrrigacao) return;
+
+  /*
+   * Autenticidade ANTES de tudo. Quem sofre a consequencia fisica e o
+   * dispositivo, entao a ultima barreira tem de estar aqui: mesmo que o broker
+   * deixe passar (broker publico, credencial vazada), comando que nao foi
+   * assinado pelo servico com a chave deste dispositivo nao liga a bomba.
+   */
+  const sig = seguranca.verificarAssinatura(CHAVE, topico, buffer.toString('utf8'));
+  if (!sig.ok) {
+    const talvez = contrato.desserializar(buffer);
+    console.log(`[${millis()}ms] <- comando RECUSADO (${sig.motivo}) -- nao foi o servico que assinou`);
+    return responder(talvez.ok ? talvez.payload : null, 'REJEITADO_ASSINATURA', sig.motivo);
+  }
 
   const bruto = contrato.desserializar(buffer);
   if (!bruto.ok) return responder(null, 'REJEITADO_CONTRATO', bruto.motivo);
@@ -258,7 +292,7 @@ function responder(cmd, resultado, detalhe) {
     appliedAtDeviceMs: millis(),
     detail: detalhe || ''
   };
-  cliente.publish(topicos.ackIrrigacao, JSON.stringify(ack), { qos: cfg.mqtt.qos });
+  publicarAssinado(topicos.ackIrrigacao, ack, { qos: cfg.mqtt.qos });
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +353,46 @@ function tratarTecla(tecla) {
     case 'i':
       publicarLeitura(montarLeitura({ valid: false }), '[valid:false]');
       break;
+
+    /* S1 -- leitura SEM assinatura: o servico rejeita (ASSINATURA_AUSENTE). */
+    case 'a': {
+      const ev = montarLeitura({ value: 20 });
+      cliente.publish(topicos.telemetriaSolo, JSON.stringify(ev), { qos: cfg.mqtt.qos });
+      console.log(`[${ev.eventTimeMs}ms] -> telemetria ${ev.eventId} valor=20%  [ATAQUE: sem assinatura]`);
+      break;
+    }
+
+    /*
+     * S2 -- adulteracao no caminho: assina 60% e troca para 20% depois. E o que
+     * um intermediario faria para provocar irrigacao. O HMAC deixa de conferir.
+     */
+    case 'g': {
+      const ev = montarLeitura({ value: 60 });
+      const texto = seguranca.assinar(CHAVE, topicos.telemetriaSolo, ev).replace('"value":60', '"value":20');
+      cliente.publish(topicos.telemetriaSolo, texto, { qos: cfg.mqtt.qos });
+      console.log(`[${ev.eventTimeMs}ms] -> telemetria ${ev.eventId} 60% trocado por 20% apos assinar  [ATAQUE: adulterada]`);
+      break;
+    }
+
+    /*
+     * S3 -- falsidade de origem: este gateway, autenticado como DEVICE_ID, publica
+     * dizendo ser outro dispositivo. No broker local a ACL barra e DERRUBA a
+     * conexao (o simulador reconecta sozinho em seguida).
+     */
+    case 'o': {
+      const ev = { ...montarLeitura({ value: 20 }), deviceId: 'esp32-vaso-01' };
+      publicarAssinado(topicos.telemetriaSolo, ev, { qos: cfg.mqtt.qos });
+      console.log('   -> telemetria com deviceId=esp32-vaso-01  [ATAQUE: identidade alheia]');
+      break;
+    }
+
+    /* S4 -- topico de outro vaso: a ACL amarra o gateway ao proprio vaso. */
+    case 'c': {
+      const alheio = topicos.telemetriaSolo.replace(`/vaso/${ENTITY_ID}/`, '/vaso/vaso-02/');
+      publicarAssinado(alheio, montarLeitura({ value: 20 }), { qos: cfg.mqtt.qos });
+      console.log(`   -> telemetria em ${alheio}  [ATAQUE: vaso alheio]`);
+      break;
+    }
 
     /* F1 -- silencio: para de publicar telemetria, heartbeat continua. */
     case 'p':

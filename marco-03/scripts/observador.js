@@ -16,7 +16,6 @@
  * Uso: node scripts/observador.js
  */
 
-const mqtt = require('mqtt');
 const contrato = require('../contrato');
 
 const cfg = contrato.carregarConfig();
@@ -29,7 +28,8 @@ const assinaturas = [
   topicos.ackIrrigacao
 ];
 
-const cliente = mqtt.connect(cfg.mqtt.url, {
+// Identidade "observador": pela ACL so assina, nunca publica.
+const cliente = contrato.conectar(cfg, 'observador', {
   clientId: `observador-${Math.random().toString(16).slice(2, 8)}`
 });
 
@@ -73,7 +73,8 @@ cliente.on('message', (topico, buffer) => {
     resumo = JSON.stringify(p).slice(0, 90);
   }
 
-  console.log(`${marca}  ${curto.padEnd(22)} ${resumo}`);
+  const assinado = /,"sig":"[0-9a-f]{64}"\}$/.test(buffer.toString('utf8')) ? '  [assinado]' : '  [SEM ASSINATURA]';
+  console.log(`${marca}  ${curto.padEnd(22)} ${resumo}${assinado}`);
 });
 
 cliente.on('error', (e) => console.log('erro:', e.message));
