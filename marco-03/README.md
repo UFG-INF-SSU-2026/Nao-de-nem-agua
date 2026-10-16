@@ -1,10 +1,16 @@
-# Marco 3 — ciclo de alertas de cuidado MQTT v1
+# Marco 3 — evolução da fronteira produtor-consumidor
 
-Integração entre **`gateway-vaso`** (produtor) e **`servico-irrigacao`**
-(consumidor de telemetria e produtor de comandos e alertas), por **MQTT**.
-O **notificador** é um processo independente que representa o aplicativo ou a
-Alexa no terminal, com validação, deduplicação e expiração dos alertas.
+Evolução do Marco 2 (**`gateway-vaso`** → **`servico-irrigacao`**, por **MQTT**,
+com contrato versionado e comando idempotente) em duas frentes:
 
+- **Novo ciclo produtor-consumidor:** o `servico-irrigacao`, que era só
+  consumidor, passa a **produzir alertas de cuidado** (`AlertaCuidado`). Eles
+  são consumidos pelo **notificador**, um processo independente que representa
+  o aplicativo ou a Alexa no terminal, com validação, deduplicação e expiração.
+- **Segurança:** **canal TLS**, **autenticação por usuário/senha**, **ACL no
+  broker** e **assinatura HMAC** de cada mensagem do dispositivo.
+
+- Segurança (canal, identidade, autorização, HMAC) → [`docs/seguranca.md`](docs/seguranca.md)
 - Decisões arquiteturais → [`docs/arquitetura.md`](docs/arquitetura.md)
 - Contrato e payloads → [`docs/contrato.md`](docs/contrato.md)
 - Alertas, correlação, TTL e ACL futura → [`docs/alertas.md`](docs/alertas.md)
@@ -16,9 +22,15 @@ Alexa no terminal, com validação, deduplicação e expiração dos alertas.
 
 Requer **Node.js 20+**. Não requer Docker.
 
-```powershell
-cd marco-03
-npm install
+```bash
+cd marco-03 && npm install
+```
+
+Na primeira vez, gere a CA, o certificado do broker e as senhas de cada
+identidade (esses arquivos **não** vão para o git):
+
+```bash
+npm run seguranca
 ```
 
 Depois, **quatro terminais PowerShell**, todos na pasta `marco-03`:
@@ -48,11 +60,17 @@ simulador, pressione `s` para secar o solo e observe a decisão acontecer.
 npm run teste
 ```
 
-Sobe broker local em porta livre, serviço e notificador como subprocessos e
-assume o papel do dispositivo. Preserva os testes anteriores e acrescenta a
-seção 8 de alertas, incluindo acks fora de ordem, duplicatas, expiração, LWT,
-recuperação, rejeições, parada e mensagens inválidas. Não depende de internet;
-imprime a contagem de verificações e encerra conexões e subprocessos em falhas.
+Sobe broker local (TLS) em porta livre, serviço, notificador e simulador como
+subprocessos e assume o papel do dispositivo. São 62 verificações:
+
+- **seções 1 a 7 (Marco 2):** decisão, deduplicação, contrato, expiração, retry,
+  comando expirado, evento histórico e *will message*;
+- **seção 8 (alertas):** acks fora de ordem, duplicatas, expiração, LWT,
+  recuperação, rejeições e mensagens inválidas no notificador;
+- **seções 9 a 13 (segurança):** TLS, usuário/senha, ACL e HMAC no serviço e no
+  dispositivo.
+
+Não depende de internet. Leva cerca de 1 minuto.
 
 Use depois de qualquer alteração, inclusive depois da alteração feita ao vivo
 durante a verificação.
@@ -73,8 +91,31 @@ durante a verificação.
 | `p` | pausa a telemetria (silêncio) → expiração da validade |
 | `k` | **mata a conexão sem DISCONNECT** → dispara o LWT |
 | `q` | encerra limpo (sem LWT) |
+| `a` | **ataque:** leitura seca **sem assinatura** → `ASSINATURA_AUSENTE` no serviço |
+| `g` | **ataque:** assina 60% e troca para 20% → `ASSINATURA_INVALIDA` |
+| `o` | **ataque:** publica com `deviceId` de outro dispositivo → broker nega e derruba (reconecta sozinho) |
+| `c` | **ataque:** publica no tópico do vaso-02 → broker nega pela ACL |
 
 No terminal do serviço, `e` imprime o estado corrente.
+
+## Ataques de demonstração
+
+Com broker, serviço e simulador ligados, cada comando faz uma tentativa real e
+mostra a recusa. A recusa aparece também no terminal de quem defende.
+
+| Comando | Ataque | Quem barra |
+|---|---|---|
+| `npm run ataque -- texto-puro` | MQTT sem TLS | broker (`TLS_RECUSADO`) |
+| `npm run ataque -- sem-ca` | cliente que não confia na nossa CA | o próprio cliente |
+| `npm run ataque -- sem-senha` | conexão anônima | broker (`AUTH_RECUSADA`, CONNACK 5) |
+| `npm run ataque -- senha-errada` | senha errada | broker (`AUTH_RECUSADA`, CONNACK 4) |
+| `npm run ataque -- notificador-comanda` | notificador tenta ligar a bomba | broker (`PUBLISH_NEGADO` + desconexão) |
+| `npm run ataque -- vaso-alheio` | gateway assina comandos do vaso-02 | broker (`SUBSCRIBE_NEGADO`) |
+| `npm run ataque -- comando-forjado` | comando assinado sem a chave do serviço | **dispositivo** (`REJEITADO_ASSINATURA`) |
+
+O `comando-forjado` funciona nos dois caminhos. No local, o atacante tem a
+**senha do serviço** (simula vazamento), mas não a chave HMAC. No público, não
+precisa de senha nenhuma. Nos dois casos, a bomba não liga.
 
 ---
 
@@ -82,8 +123,9 @@ No terminal do serviço, `e` imprime o estado corrente.
 
 ### Caminho A — local, offline (padrão)
 
-Broker Aedes em `localhost:1883`, produtor simulado. Determinístico e sem
-internet. **É o caminho recomendado para a demonstração.**
+Broker Aedes em `mqtts://localhost:8883` (só TLS), produtor simulado.
+Determinístico e sem internet. Tem **todas** as camadas: TLS com CA própria,
+usuário/senha, ACL e HMAC. **É o caminho recomendado para a demonstração.**
 
 ### Caminho B — dispositivo real no Wokwi
 
@@ -97,28 +139,33 @@ caminho passa por um broker público e depende de internet.
 3. Aponte o serviço para o mesmo broker:
 
 ```bash
-MQTT_URL=mqtt://broker.hivemq.com:1883 npm run servico
+MQTT_URL=mqtts://broker.hivemq.com:8883 npm run servico
 ```
 
 No PowerShell:
 
 ```powershell
-$env:MQTT_URL="mqtt://broker.hivemq.com:1883"; npm run servico
+$env:MQTT_URL="mqtts://broker.hivemq.com:8883"; npm run servico
 ```
+
+> O ESP32 conecta por **TLS na porta 8883** e confere o certificado do broker
+> contra a Amazon Root CA 1, fixada no sketch. O broker público não tem senha
+> nem ACL, e qualquer um pode publicar nos nossos tópicos. Por isso, neste
+> caminho, a proteção é o **HMAC**: o serviço só aceita telemetria assinada pelo
+> ESP32, e o ESP32 só executa comando assinado pelo serviço. Para ver na
+> prática, rode `MQTT_URL=mqtts://broker.hivemq.com:8883 npm run ataque -- comando-forjado`
+> com o ESP32 ligado: o LED da bomba não acende e o Serial mostra
+> `REJEITADO_ASSINATURA`. Ver `docs/seguranca.md`.
 
 Em outro PowerShell, configure o mesmo broker para o notificador:
 
 ```powershell
-$env:MQTT_URL="mqtt://broker.hivemq.com:1883"
+$env:MQTT_URL="mqtts://broker.hivemq.com:8883"
 npm run notificador
 ```
 
 O host, prefixo e vaso precisam coincidir com os valores do firmware Wokwi.
 Para voltar ao broker local, use `Remove-Item Env:MQTT_URL` em cada terminal.
-
-> O broker público é **aberto, sem TLS e sem autenticação**. Qualquer um pode
-> assinar e publicar nesses tópicos. É uma limitação declarada deste marco, não
-> uma decisão de arquitetura — ver `docs/arquitetura.md`, seção 11.
 
 ---
 
@@ -156,7 +203,8 @@ Nenhuma alteração de comportamento exige editar código. Tudo está em
 LIMIAR_LIGA=45 npm run servico      # bomba liga com solo mais úmido
 VALIDADE_MS=3000 npm run servico    # dado expira mais cedo
 COOLDOWN_MS=2000 npm run servico    # pulsos mais frequentes
-MQTT_URL=mqtt://broker.hivemq.com:1883 npm run servico
+MQTT_URL=mqtts://broker.hivemq.com:8883 npm run servico
+EXIGIR_ASSINATURA=0 npm run servico # desliga o HMAC: mostra o ataque 'a' passando
 ```
 
 ---
@@ -166,8 +214,13 @@ MQTT_URL=mqtt://broker.hivemq.com:1883 npm run servico
 ```
 marco-03/
 ├── config.json                 configuração única dos três componentes
+├── seguranca/
+│   ├── index.js                TLS, senha (scrypt), ACL e HMAC
+│   ├── gerar.js                `npm run seguranca`: CA, certificado, senhas
+│   ├── acl.json                identidades e papéis (o que cada um publica/assina)
+│   └── chaves-hmac.json        chaves de demonstração por dispositivo
 ├── contrato/
-│   ├── index.js                carregamento, validação (ajv) e tópicos
+│   ├── index.js                carregamento, validação (ajv), tópicos e conexão segura
 │   └── v1/*.schema.json        cinco schemas, incluindo AlertaCuidado
 ├── produtor-esp32/             PRODUTOR — firmware Wokwi (caminho B)
 ├── simulador-produtor/         PRODUTOR — substituto declarado (caminho A)
@@ -180,9 +233,10 @@ marco-03/
 │   └── src/log.js              log legível + eventos.jsonl
 ├── notificador/src/main.js     consumidor independente de alert/#
 ├── scripts/
-│   ├── teste-integracao.js     verificação MQTT da fronteira e dos alertas
+│   ├── teste-integracao.js     verificação automática: fronteira, alertas e segurança (62)
+│   ├── ataques.js              `npm run ataque -- <nome>`: ataques de demonstração
 │   └── observador.js           segundo consumidor
-└── docs/                       arquitetura, contrato e diagramas
+└── docs/                       arquitetura, contrato, segurança e diagramas
 ```
 
 ---

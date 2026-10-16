@@ -20,9 +20,9 @@
  *   7. comando idempotente         (com correlacao e prazo de validade)
  */
 
-const mqtt = require('mqtt');
 const path = require('path');
 const contrato = require('../../contrato');
+const seguranca = require('../../seguranca');
 const { EstadoVaso } = require('./estado');
 const { AlertasCuidado } = require('./alertas');
 const { decidir } = require('./decisao');
@@ -50,17 +50,26 @@ console.log(
     `debounce=${cfg.regra.amostrasDebounce} cooldown=${cfg.regra.cooldownMs}ms ` +
     `validade=${cfg.regra.validadeMs}ms ttl=${cfg.regra.comandoTtlMs}ms`
 );
+console.log(
+  `  seguranca   ${cfg.mqtt.url.startsWith('mqtts:') ? 'TLS' : 'SEM TLS'}, ` +
+    `${contrato.brokerLocal(cfg.mqtt.url) ? 'identidade servico-irrigacao (usuario/senha)' : 'broker publico: sem senha, so HMAC'}, ` +
+    `assinatura HMAC ${cfg.seguranca.exigirAssinatura ? 'EXIGIDA' : 'DESLIGADA'}`
+);
 console.log('');
 
 // ---------------------------------------------------------------------------
 // Conexao
 // ---------------------------------------------------------------------------
 
-const cliente = mqtt.connect(cfg.mqtt.url, {
-  clientId: `servico-irrigacao-${Math.random().toString(16).slice(2, 8)}`,
-  clean: true,
-  reconnectPeriod: 2000,
-  connectTimeout: 8000
+/*
+ * Identidade "servico-irrigacao": TLS + usuario/senha no broker local. Pela ACL,
+ * e a UNICA identidade autorizada a publicar comando (ver seguranca/acl.json).
+ */
+const IDENTIDADE = 'servico-irrigacao';
+
+const cliente = contrato.conectar(cfg, IDENTIDADE, {
+  clientId: `${IDENTIDADE}-${Math.random().toString(16).slice(2, 8)}`,
+  clean: true
 });
 
 const alertas = new AlertasCuidado(cliente, cfg, log);
@@ -94,12 +103,15 @@ cliente.on('error', (e) => log.registrar('REJEITADO', `erro de conexao: ${e.mess
 cliente.on('message', (topico, buffer) => {
   const agora = Date.now();
 
-  // Etapa 1 -- desserializacao tolerante.
-  const bruto = contrato.desserializar(buffer);
+  // Etapa 1 -- desserializacao tolerante + autenticidade (HMAC do dispositivo).
+  // Toda mensagem assinada aqui vem de dispositivo: telemetria, heartbeat
+  // (inclusive o LWT) e ack. Sem assinatura valida, nada segue no pipeline.
+  const bruto = contrato.abrirMensagemDeDispositivo(cfg, topico, buffer);
   if (!bruto.ok) {
-    log.registrar('REJEITADO', `${bruto.motivo} em ${topico}: ${bruto.detalhe}`, {
+    log.registrar('REJEITADO', `${bruto.motivo} em ${topico}: ${bruto.detalhe || ''}`, {
       topico,
-      motivo: bruto.motivo
+      motivo: bruto.motivo,
+      detalhe: bruto.detalhe
     });
     return;
   }
@@ -258,9 +270,15 @@ function tratarAck(payload) {
    * ocorreu; a confirmacao serve para desfazer essa suposicao quando o
    * dispositivo informa que nao atuou.
    */
+  /*
+   * So o ack de um comando que ESTE servico emitiu, vindo do dispositivo que o
+   * recebeu, corrige o estado. A recusa de um comando forjado por terceiro
+   * (REJEITADO_ASSINATURA de um commandId desconhecido) nao diz nada sobre a
+   * irrigacao que este servico pediu: confirmar() devolve null para ela.
+   */
   const original = alertas.confirmar(payload);
   if (original && original.commandId === ultimoComandoEmitido?.commandId && payload.result !== 'EXECUTADO' && payload.result !== 'IGNORADO_DUPLICADO') {
-    // REJEITADO_EXPIRADO ou REJEITADO_CONTRATO: o efeito nao ocorreu.
+    // REJEITADO_EXPIRADO, REJEITADO_CONTRATO ou REJEITADO_ASSINATURA: o efeito nao ocorreu.
     estado.bombaLigada = false;
   }
 }
@@ -299,10 +317,23 @@ function publicarComando(comando, agora) {
     return;
   }
 
+  /*
+   * O comando sai assinado com a chave do dispositivo que vai executa-lo -- o
+   * mesmo que enviou a telemetria que originou a decisao. Do lado dele, comando
+   * sem essa assinatura e recusado antes de qualquer outra verificacao: e o que
+   * impede um terceiro no broker publico de ligar a bomba.
+   */
+  const disp = seguranca.dispositivo(estado.deviceId);
+  if (!disp) {
+    log.registrar('REJEITADO', `sem chave para assinar o comando (deviceId=${estado.deviceId})`, { comando });
+    return;
+  }
+  const texto = seguranca.assinar(disp.chave, topicos.comandoIrrigacao, comando);
+
   alertas.registrarComando({ ...comando, deviceIdOrigem: estado.deviceId, bootIdOrigem: estado.bootId });
   cliente.publish(
     topicos.comandoIrrigacao,
-    JSON.stringify(comando),
+    texto,
     { qos: cfg.mqtt.qos },
     (erro) => {
       if (erro) {

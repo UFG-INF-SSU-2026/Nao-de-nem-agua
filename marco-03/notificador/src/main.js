@@ -1,16 +1,17 @@
 'use strict';
 
 // Consumidor independente e somente leitura. Não possui caminho de publicação.
-const mqtt = require('mqtt');
 const { randomUUID } = require('crypto');
 const contrato = require('../../contrato');
 const cfg = contrato.carregarConfig();
 const topicos = contrato.topicos(cfg);
 const vistos = new Set();
 const LIMITE = 500;
-const cliente = mqtt.connect(cfg.mqtt.url, {
+// Identidade "notificador" (TLS + usuario/senha no broker local). Pela ACL so
+// assina alert/#: mesmo que quisesse, nao conseguiria comandar a bomba.
+const cliente = contrato.conectar(cfg, 'notificador', {
   clientId: `notificador-${randomUUID()}`, clean: true,
-  reconnectPeriod: 1000, connectTimeout: 8000
+  reconnectPeriod: 1000
 });
 
 cliente.on('connect', () => cliente.subscribe(topicos.alertas, { qos: 1 }, erro => {

@@ -20,6 +20,11 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": { "const": 1 },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "HMAC-SHA256 (hex) de topico + \"\n\" + corpo, com a chave do dispositivo. Sempre o ULTIMO campo do JSON. Opcional no schema para manter a v1 compativel; exigido por politica (seguranca.exigirAssinatura). Ver docs/seguranca.md."
+    },
     "commandId": { "type": "string", "minLength": 1 },
     "idempotencyKey": {
       "type": "string",

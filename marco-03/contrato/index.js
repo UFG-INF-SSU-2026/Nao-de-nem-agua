@@ -13,6 +13,8 @@ const path = require('path');
 // Os schemas declaram o dialeto 2020-12; o export padrao do ajv implementa
 // draft-07 e recusaria o proprio $schema. Este e o build do dialeto correto.
 const Ajv = require('ajv/dist/2020');
+const mqtt = require('mqtt');
+const seguranca = require('../seguranca');
 
 const RAIZ = path.resolve(__dirname, '..');
 const VERSAO_SUPORTADA = 1;
@@ -45,9 +47,52 @@ function carregarConfig() {
     if (env[chaveEnv] !== undefined) cfg.regra[chaveCfg] = Number(env[chaveEnv]);
   }
 
+  if (env.EXIGIR_ASSINATURA !== undefined) {
+    cfg.seguranca.exigirAssinatura = env.EXIGIR_ASSINATURA !== '0';
+  }
+
   cfg.alertas = { ttlMs: 60000, ...(cfg.alertas || {}) };
   if (env.ALERTA_TTL_MS !== undefined) cfg.alertas.ttlMs = Number(env.ALERTA_TTL_MS);
   return cfg;
+}
+
+// ---------------------------------------------------------------------------
+// Conexao segura
+// ---------------------------------------------------------------------------
+
+const HOSTS_LOCAIS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+function brokerLocal(url) {
+  return HOSTS_LOCAIS.has(new URL(url).hostname);
+}
+
+/*
+ * Ponto UNICO de conexao ao broker, usado por todos os componentes Node.
+ *
+ * Broker local (caminho A): TLS com a CA propria + usuario/senha da identidade.
+ * Broker publico (caminho B): TLS com as CAs do sistema e SEM credenciais --
+ * enviar a nossa senha a um broker de terceiros seria entrega-la. Nesse caminho
+ * quem autentica e o HMAC de cada mensagem.
+ *
+ * rejectUnauthorized fica sempre ligado: um cliente que aceita qualquer
+ * certificado tem um canal cifrado com um interlocutor desconhecido, o que nao
+ * e um canal seguro.
+ */
+function conectar(cfg, identidade, opcoes) {
+  const url = cfg.mqtt.url;
+  const local = brokerLocal(url);
+  const final = {
+    reconnectPeriod: 2000,
+    connectTimeout: 8000,
+    rejectUnauthorized: true,
+    ...(opcoes || {})
+  };
+  if (url.startsWith('mqtts:') && local) final.ca = seguranca.caPropria();
+  if (local) {
+    final.username = identidade;
+    final.password = seguranca.senhaDe(identidade);
+  }
+  return mqtt.connect(url, final);
 }
 
 // ---------------------------------------------------------------------------
@@ -146,10 +191,45 @@ function desserializar(buffer) {
   }
 }
 
+/*
+ * Desserializa E autentica uma mensagem de dispositivo.
+ *
+ * Ordem: JSON -> dispositivo conhecido -> vaso do topico -> assinatura. A
+ * autenticidade e conferida ANTES do schema: nao faz sentido gastar validacao
+ * de conteudo com uma mensagem cuja origem nao se sabe.
+ */
+function abrirMensagemDeDispositivo(cfg, topico, buffer) {
+  const texto = buffer.toString('utf8');
+  const bruto = desserializar(buffer);
+  if (!bruto.ok) return bruto;
+
+  const payload = bruto.payload;
+  if (!cfg.seguranca.exigirAssinatura) return { ok: true, payload };
+
+  const disp = payload && dispositivoDe(payload.deviceId);
+  if (!disp) {
+    return { ok: false, motivo: 'DISPOSITIVO_DESCONHECIDO', detalhe: `deviceId=${payload && payload.deviceId}` };
+  }
+  if (!topico.includes(`/vaso/${disp.vasoId}/`)) {
+    return { ok: false, motivo: 'VASO_NAO_PERTENCE_AO_DISPOSITIVO', detalhe: `${payload.deviceId} nao e do vaso deste topico` };
+  }
+  const sig = seguranca.verificarAssinatura(disp.chave, topico, texto);
+  if (!sig.ok) return { ok: false, motivo: sig.motivo, detalhe: sig.detalhe || `deviceId=${payload.deviceId}` };
+
+  return { ok: true, payload };
+}
+
+function dispositivoDe(deviceId) {
+  return typeof deviceId === 'string' ? seguranca.dispositivo(deviceId) : null;
+}
+
 module.exports = {
   VERSAO_SUPORTADA,
   carregarConfig,
   topicos,
   validar,
-  desserializar
+  desserializar,
+  conectar,
+  brokerLocal,
+  abrirMensagemDeDispositivo
 };

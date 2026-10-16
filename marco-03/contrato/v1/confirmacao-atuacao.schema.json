@@ -16,6 +16,11 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": { "const": 1 },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "HMAC-SHA256 (hex) de topico + \"\n\" + corpo, com a chave do dispositivo. Sempre o ULTIMO campo do JSON. Opcional no schema para manter a v1 compativel; exigido por politica (seguranca.exigirAssinatura). Ver docs/seguranca.md."
+    },
     "eventType": { "const": "ConfirmacaoAtuacao" },
     "deviceId": { "type": "string", "minLength": 1 },
     "bootId": { "type": "string", "pattern": "^[a-f0-9]{4,16}$" },
@@ -26,9 +31,10 @@
         "EXECUTADO",
         "IGNORADO_DUPLICADO",
         "REJEITADO_EXPIRADO",
-        "REJEITADO_CONTRATO"
+        "REJEITADO_CONTRATO",
+        "REJEITADO_ASSINATURA"
       ],
-      "description": "EXECUTADO: a atuacao ocorreu. IGNORADO_DUPLICADO: idempotencyKey ja aplicada, efeito nao repetido. REJEITADO_EXPIRADO: chegou depois de expiresAtDeviceMs. REJEITADO_CONTRATO: payload nao interpretavel nesta versao."
+      "description": "EXECUTADO: a atuacao ocorreu. IGNORADO_DUPLICADO: idempotencyKey ja aplicada, efeito nao repetido. REJEITADO_EXPIRADO: chegou depois de expiresAtDeviceMs. REJEITADO_CONTRATO: payload nao interpretavel nesta versao. REJEITADO_ASSINATURA: o comando nao veio assinado pelo servico com a chave deste dispositivo; nada foi executado."
     },
     "appliedAtDeviceMs": { "type": "integer", "minimum": 0 },
     "detail": { "type": "string" }

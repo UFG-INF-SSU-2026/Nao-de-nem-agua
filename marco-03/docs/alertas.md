@@ -112,7 +112,7 @@ Use `npm run teste` para verificar o ciclo completo sem internet.
 Com Wokwi, o serviço e o notificador precisam do mesmo broker do firmware:
 
 ```powershell
-$env:MQTT_URL="mqtt://broker.hivemq.com:1883"
+$env:MQTT_URL="mqtts://broker.hivemq.com:8883"
 npm run servico
 ```
 
@@ -121,17 +121,23 @@ e vaso devem coincidir em todos os componentes. Não execute o broker local ness
 caminho. O teste automatizado usa Aedes local; Wokwi e broker público exigem uma
 verificação manual com internet.
 
-## Preparação para segurança e ACL
+## Segurança e ACL (implementado)
 
-Na próxima etapa, três identidades distintas limitarão permissões:
+A separação de responsabilidades prevista aqui virou permissão no broker local.
+Cada processo autentica com a própria identidade (TLS + usuário/senha), e a ACL
+limita o que cada um pode fazer:
 
 | Identidade | Publica | Assina |
 |---|---|---|
-| Gateway | telemetria, heartbeat e confirmações | comandos |
-| Serviço de irrigação | comandos e alertas | telemetria, heartbeat e confirmações |
-| Notificador | nada | exclusivamente alert/# |
+| Gateway (`sim-vaso-01`, `esp32-vaso-01`) | telemetria, heartbeat e confirmações do próprio vaso | comandos do próprio vaso |
+| Serviço de irrigação (`servico-irrigacao`) | comandos e alertas | telemetria, heartbeat e confirmações |
+| Notificador (`notificador`) | nada | exclusivamente `alert/#` |
 
-O teste futuro de ACL deve conectar com a identidade do notificador, tentar
-publicar em `command/irrigacao` e verificar a recusa no broker e a ausência de
-comando entregue ao gateway. Nenhuma autenticação ou ACL é implementada agora;
-a separação atual é de responsabilidades do código.
+O teste previsto existe na seção 11 do `npm run teste`. O notificador conecta,
+tenta publicar em `command/irrigacao`, o broker recusa e derruba a conexão, e
+nenhum comando chega ao gateway. Ao vivo: `npm run ataque -- notificador-comanda`.
+
+Os alertas não levam assinatura HMAC: só o serviço pode publicar em `alert/`
+(ACL), e o HMAC por dispositivo protege a fronteira com o dispositivo. No broker
+público, sem ACL, essa garantia não existe; limitação registrada em
+[`seguranca.md`](seguranca.md).

@@ -1,11 +1,13 @@
 {
-  "_comment": "Configuracao unica do Marco 2, lida pelo broker, pelo simulador e pelo servico. Todo parametro aqui pode ser sobrescrito por variavel de ambiente (ver docs/arquitetura.md, secao 'Alteracao ao vivo'). Editar ESTE arquivo e a forma prevista de alterar o comportamento durante a verificacao.",
+  "_comment": "Configuracao unica do Marco 3, lida pelo broker, pelo simulador e pelo servico. Todo parametro aqui pode ser sobrescrito por variavel de ambiente (ver docs/arquitetura.md, secao 'Alteracao ao vivo'). Editar ESTE arquivo e a forma prevista de alterar o comportamento durante a verificacao.",
+
   "mqtt": {
-    "url": "mqtt://localhost:1883",
-    "urlLocal": "mqtt://localhost:1883",
-    "urlPublico": "mqtt://broker.hivemq.com:1883",
+    "_comment": "mqtts:// = MQTT sobre TLS. Nao existe porta em texto puro. Com host local, o cliente confia na CA propria (seguranca/certs/ca.crt) e envia usuario/senha; com host publico, confia nas CAs do sistema e NAO envia senha -- la a autenticidade vem do HMAC.",
+    "url": "mqtts://localhost:8883",
+    "urlLocal": "mqtts://localhost:8883",
+    "urlPublico": "mqtts://broker.hivemq.com:8883",
     "qos": 1,
-    "brokerPort": 1883
+    "brokerPort": 8883
   },
   "identidade": {
     "prefixoTopico": "naodenemagua/v1",
@@ -22,6 +24,12 @@
     "duracaoPulsoMs": 3000,
     "comandoTtlMs": 5000
   },
+
+  "seguranca": {
+    "_comment": "exigirAssinatura: o servico rejeita telemetria, heartbeat e ack sem HMAC valido do dispositivo. Desligar (EXIGIR_ASSINATURA=0) existe apenas para mostrar o ataque funcionando sem a protecao.",
+    "exigirAssinatura": true
+  },
+
   "simulador": {
     "intervaloTelemetriaMs": 1500,
     "intervaloHeartbeatMs": 1500,
