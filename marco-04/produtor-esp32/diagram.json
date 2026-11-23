@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "author": "Grupo Nao de nem agua",
+  "editor": "wokwi",
+  "parts": [
+    { "id": "esp", "type": "board-esp32-devkit-c-v4", "top": 0, "left": 0, "attrs": {} },
+    {
+      "id": "solo1",
+      "type": "chip-sonda-solo",
+      "top": 20,
+      "left": 260,
+      "attrs": { "umidade": "60", "temperatura": "24", "ec25": "1200", "falha": "0" }
+    },
+    { "id": "dht1", "type": "wokwi-dht22", "top": -130, "left": 260, "attrs": { "temperature": "26", "humidity": "55" } },
+    { "id": "us_agua", "type": "wokwi-hc-sr04", "top": -130, "left": -260, "attrs": { "distance": "9" } },
+    { "id": "us_adubo", "type": "wokwi-hc-sr04", "top": 20, "left": -260, "attrs": { "distance": "6" } },
+
+    { "id": "rl_agua", "type": "wokwi-relay-module", "top": 160, "left": 260, "attrs": {} },
+    { "id": "r_agua", "type": "wokwi-resistor", "top": 240, "left": 420, "attrs": { "value": "220" } },
+    { "id": "led_agua", "type": "wokwi-led", "top": 200, "left": 500, "attrs": { "color": "cyan", "label": "Bomba agua" } },
+
+    { "id": "rl_adubo", "type": "wokwi-relay-module", "top": 300, "left": 260, "attrs": {} },
+    { "id": "r_adubo", "type": "wokwi-resistor", "top": 380, "left": 420, "attrs": { "value": "220" } },
+    { "id": "led_adubo", "type": "wokwi-led", "top": 340, "left": 500, "attrs": { "color": "green", "label": "Bomba adubo" } },
+
+    { "id": "rl_umid", "type": "wokwi-relay-module", "top": 440, "left": 260, "attrs": {} },
+    { "id": "r_umid", "type": "wokwi-resistor", "top": 520, "left": 420, "attrs": { "value": "220" } },
+    { "id": "led_umid", "type": "wokwi-led", "top": 480, "left": 500, "attrs": { "color": "blue", "label": "Umidificador" } },
+
+    { "id": "r_status", "type": "wokwi-resistor", "top": 260, "left": -120, "attrs": { "value": "220" } },
+    { "id": "led_status", "type": "wokwi-led", "top": 220, "left": -200, "attrs": { "color": "white", "label": "Broker" } },
+    { "id": "r_prot", "type": "wokwi-resistor", "top": 360, "left": -120, "attrs": { "value": "220" } },
+    { "id": "led_prot", "type": "wokwi-led", "top": 320, "left": -200, "attrs": { "color": "red", "label": "Protecao local" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "solo1:VCC", "esp:3V3", "red", [] ],
+    [ "solo1:GND", "esp:GND.1", "black", [] ],
+    [ "solo1:UMID", "esp:34", "blue", [] ],
+    [ "solo1:TEMP", "esp:35", "orange", [] ],
+    [ "solo1:EC", "esp:32", "green", [] ],
+
+    [ "dht1:VCC", "esp:3V3", "red", [] ],
+    [ "dht1:GND", "esp:GND.2", "black", [] ],
+    [ "dht1:SDA", "esp:15", "green", [] ],
+
+    [ "us_agua:VCC", "esp:5V", "red", [] ],
+    [ "us_agua:GND", "esp:GND.1", "black", [] ],
+    [ "us_agua:TRIG", "esp:5", "yellow", [] ],
+    [ "us_agua:ECHO", "esp:18", "cyan", [] ],
+    [ "us_adubo:VCC", "esp:5V", "red", [] ],
+    [ "us_adubo:GND", "esp:GND.1", "black", [] ],
+    [ "us_adubo:TRIG", "esp:17", "yellow", [] ],
+    [ "us_adubo:ECHO", "esp:16", "cyan", [] ],
+
+    [ "rl_agua:VCC", "esp:5V", "red", [] ],
+    [ "rl_agua:GND", "esp:GND.2", "black", [] ],
+    [ "rl_agua:IN", "esp:26", "purple", [] ],
+    [ "rl_agua:COM", "esp:3V3", "red", [] ],
+    [ "rl_agua:NO", "r_agua:1", "cyan", [] ],
+    [ "r_agua:2", "led_agua:A", "cyan", [] ],
+    [ "led_agua:C", "esp:GND.3", "black", [] ],
+
+    [ "rl_adubo:VCC", "esp:5V", "red", [] ],
+    [ "rl_adubo:GND", "esp:GND.2", "black", [] ],
+    [ "rl_adubo:IN", "esp:27", "purple", [] ],
+    [ "rl_adubo:COM", "esp:3V3", "red", [] ],
+    [ "rl_adubo:NO", "r_adubo:1", "green", [] ],
+    [ "r_adubo:2", "led_adubo:A", "green", [] ],
+    [ "led_adubo:C", "esp:GND.3", "black", [] ],
+
+    [ "rl_umid:VCC", "esp:5V", "red", [] ],
+    [ "rl_umid:GND", "esp:GND.2", "black", [] ],
+    [ "rl_umid:IN", "esp:33", "purple", [] ],
+    [ "rl_umid:COM", "esp:3V3", "red", [] ],
+    [ "rl_umid:NO", "r_umid:1", "blue", [] ],
+    [ "r_umid:2", "led_umid:A", "blue", [] ],
+    [ "led_umid:C", "esp:GND.3", "black", [] ],
+
+    [ "esp:25", "r_status:1", "white", [] ],
+    [ "r_status:2", "led_status:A", "white", [] ],
+    [ "led_status:C", "esp:GND.1", "black", [] ],
+    [ "esp:13", "r_prot:1", "red", [] ],
+    [ "r_prot:2", "led_prot:A", "red", [] ],
+    [ "led_prot:C", "esp:GND.1", "black", [] ]
+  ],
+  "serialMonitor": { "display": "always", "newline": "lf" }
+}

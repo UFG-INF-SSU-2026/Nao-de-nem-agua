@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/comando-atuador",
+  "title": "ComandoAtuador v1",
+  "description": "Marco 4. Comando do servico para os atuadores que nao sao a bomba de agua: umidificador e bomba de fertilizante. Segue os mesmos compromissos do ComandoIrrigacao (identidade, idempotencia, prazo no relogio do dispositivo, correlacao, assinatura) e fica em topico proprio (command/atuador) para nao mudar o significado de command/irrigacao.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "commandId",
+    "idempotencyKey",
+    "commandType",
+    "targetId",
+    "actuator",
+    "action",
+    "correlationId",
+    "correlationEventTimeMs",
+    "ttlMs",
+    "expiresAtDeviceMs",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "HMAC-SHA256 (hex) de topico + \"\\n\" + corpo, com a chave do dispositivo de destino. Sempre o ULTIMO campo do JSON."
+    },
+    "commandId": { "type": "string", "minLength": 1 },
+    "idempotencyKey": { "type": "string", "minLength": 1 },
+    "commandType": { "const": "ComandoAtuador" },
+    "targetId": { "type": "string", "minLength": 1 },
+    "actuator": {
+      "enum": ["UMIDIFICADOR", "BOMBA_ADUBO"]
+    },
+    "action": {
+      "enum": ["LIGAR", "DESLIGAR", "PULSO"],
+      "description": "UMIDIFICADOR aceita LIGAR (com durationMs = concessao: o dispositivo desliga sozinho se o servico nao renovar) e DESLIGAR. BOMBA_ADUBO aceita PULSO (dose) e DESLIGAR."
+    },
+    "durationMs": { "type": "integer", "minimum": 1, "maximum": 120000 },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "correlationEventTimeMs": { "type": "integer", "minimum": 0 },
+    "ttlMs": { "type": "integer", "minimum": 0 },
+    "expiresAtDeviceMs": { "type": "integer", "minimum": 0 },
+    "issuedAt": { "type": "string" },
+    "reason": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "actuator": { "const": "UMIDIFICADOR" } } },
+      "then": { "properties": { "action": { "enum": ["LIGAR", "DESLIGAR"] } } }
+    },
+    {
+      "if": { "properties": { "actuator": { "const": "BOMBA_ADUBO" } } },
+      "then": { "properties": { "action": { "enum": ["PULSO", "DESLIGAR"] } } }
+    },
+    {
+      "if": { "properties": { "action": { "enum": ["LIGAR", "PULSO"] } } },
+      "then": { "required": ["durationMs"] }
+    }
+  ]
+}

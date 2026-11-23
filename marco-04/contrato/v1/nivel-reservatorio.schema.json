@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/nivel-reservatorio",
+  "title": "NivelReservatorio v1",
+  "description": "Marco 4. Nivel de um reservatorio (agua ou fertilizante), medido por ultrassom (HC-SR04) acima da superficie. O dispositivo ja entrega a MEDIANA das ultimas leituras e o nivel em porcentagem; os estados OK/BAIXO/CRITICO e os alertas sao do servico.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "eventType",
+    "deviceId",
+    "entityId",
+    "bootId",
+    "eventTimeMs",
+    "sequence",
+    "reservoir",
+    "valid"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "HMAC-SHA256 (hex) de topico + \"\\n\" + corpo, com a chave do dispositivo. Sempre o ULTIMO campo do JSON."
+    },
+    "eventId": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+:[a-f0-9]+:[0-9]+$" },
+    "eventType": { "const": "NivelReservatorio" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "entityId": { "type": "string", "minLength": 1 },
+    "bootId": { "type": "string", "pattern": "^[a-f0-9]{4,16}$" },
+    "eventTimeMs": { "type": "integer", "minimum": 0 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "reservoir": {
+      "enum": ["AGUA", "ADUBO"],
+      "description": "AGUA alimenta a bomba de irrigacao; ADUBO alimenta a bomba de fertilizante."
+    },
+    "distanceCm": {
+      "type": "number",
+      "minimum": 2,
+      "maximum": 400,
+      "description": "Mediana da distancia sensor -> superficie (faixa do HC-SR04)."
+    },
+    "levelPct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Nivel calculado pela geometria do tanque."
+    },
+    "valid": { "type": "boolean" },
+    "invalidReason": { "type": "string" },
+    "replayed": { "type": "boolean", "default": false }
+  },
+  "if": { "properties": { "valid": { "const": true } } },
+  "then": { "required": ["distanceCm", "levelPct"] }
+}

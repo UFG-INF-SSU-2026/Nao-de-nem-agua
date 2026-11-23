@@ -1,0 +1,25 @@
+{
+  "name": "naodenemagua-marco-04",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Marco 4 - sensores de ambiente, nutrientes (EC) e reservatorios, umidificador e bomba de fertilizante sobre a fronteira do Marco 3: produtor-consumidor do Marco 2 com canal TLS, autenticacao por usuario/senha, ACL no broker e assinatura HMAC das mensagens.",
+  "scripts": {
+    "seguranca": "node seguranca/gerar.js",
+    "broker": "node broker-local/broker.js",
+    "servico": "node consumidor-servico/src/main.js",
+    "simulador": "node simulador-produtor/src/main.js",
+    "observador": "node scripts/observador.js",
+    "teste": "node scripts/teste-integracao.js",
+    "ataque": "node scripts/ataques.js",
+    "notificador": "node notificador/src/main.js"
+  },
+  "dependencies": {
+    "aedes": "^0.51.3",
+    "ajv": "^8.17.1",
+    "mqtt": "^5.10.1",
+    "node-forge": "^1.3.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

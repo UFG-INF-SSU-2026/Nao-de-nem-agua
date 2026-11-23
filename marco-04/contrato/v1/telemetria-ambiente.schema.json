@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/telemetria-ambiente",
+  "title": "LeituraAmbiente v1",
+  "description": "Marco 4. Temperatura e umidade do ar ao redor do vaso (DHT22), produzidas pelo gateway. Evolui o evento LeituraAmbiente da Atividade 02. Alimenta a regra do umidificador (R1) no servico.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "eventType",
+    "deviceId",
+    "entityId",
+    "bootId",
+    "eventTimeMs",
+    "sequence",
+    "valid"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "HMAC-SHA256 (hex) de topico + \"\\n\" + corpo, com a chave do dispositivo. Sempre o ULTIMO campo do JSON."
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+:[a-f0-9]+:[0-9]+$",
+      "description": "deviceId:bootId:sequence. O sequence e o MESMO contador da telemetria de solo e de nivel, para que o eventId seja unico entre os tres eventos."
+    },
+    "eventType": { "const": "LeituraAmbiente" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "entityId": { "type": "string", "minLength": 1 },
+    "bootId": { "type": "string", "pattern": "^[a-f0-9]{4,16}$" },
+    "eventTimeMs": { "type": "integer", "minimum": 0 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "temperatureC": {
+      "type": "number",
+      "minimum": -40,
+      "maximum": 80,
+      "description": "Temperatura do ar (faixa do DHT22)."
+    },
+    "humidityPct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Umidade relativa do ar."
+    },
+    "valid": {
+      "type": "boolean",
+      "description": "false quando o DHT22 nao respondeu ou devolveu valor fora da faixa. Sem leitura valida, temperatura e umidade sao OMITIDAS -- nunca um numero inventado."
+    },
+    "invalidReason": { "type": "string" },
+    "replayed": { "type": "boolean", "default": false }
+  },
+  "if": { "properties": { "valid": { "const": true } } },
+  "then": { "required": ["temperatureC", "humidityPct"] }
+}

@@ -1,0 +1,88 @@
+{
+  "_comment": "Configuracao unica do Marco 4 (herdada do Marco 3), lida pelo broker, pelo simulador e pelo servico. Todo parametro aqui pode ser sobrescrito por variavel de ambiente (ver docs/arquitetura.md, secao 'Alteracao ao vivo'). Editar ESTE arquivo e a forma prevista de alterar o comportamento durante a verificacao.",
+
+  "mqtt": {
+    "_comment": "mqtts:// = MQTT sobre TLS. Nao existe porta em texto puro. Com host local, o cliente confia na CA propria (seguranca/certs/ca.crt) e envia usuario/senha; com host publico, confia nas CAs do sistema e NAO envia senha -- la a autenticidade vem do HMAC.",
+    "url": "mqtts://localhost:8883",
+    "urlLocal": "mqtts://localhost:8883",
+    "urlPublico": "mqtts://broker.hivemq.com:8883",
+    "qos": 1,
+    "brokerPort": 8883
+  },
+  "identidade": {
+    "prefixoTopico": "naodenemagua/v1",
+    "vasoId": "vaso-01",
+    "deviceIdSimulador": "sim-vaso-01"
+  },
+  "regra": {
+    "_comment": "Limiares e tempos da regra de decisao. Origem: recorte de decisao e atuacao do Marco 1 (histerese) + recorte de estado temporal (validade).",
+    "limiarLiga": 30,
+    "limiarDesliga": 50,
+    "amostrasDebounce": 3,
+    "cooldownMs": 8000,
+    "validadeMs": 10000,
+    "duracaoPulsoMs": 3000,
+    "comandoTtlMs": 5000
+  },
+
+  "seguranca": {
+    "_comment": "exigirAssinatura: o servico rejeita telemetria, heartbeat e ack sem HMAC valido do dispositivo. Desligar (EXIGIR_ASSINATURA=0) existe apenas para mostrar o ataque funcionando sem a protecao.",
+    "exigirAssinatura": true
+  },
+
+  "simulador": {
+    "intervaloTelemetriaMs": 1500,
+    "intervaloHeartbeatMs": 1500,
+    "umidadeInicial": 60,
+    "intervaloAmbienteMs": 2000,
+    "intervaloNivelMs": 1500
+  },
+  "log": {
+    "arquivoJsonl": "consumidor-servico/eventos.jsonl"
+  },
+  "alertas": {
+    "ttlMs": 60000
+  },
+
+  "ambiente": {
+    "_comment": "Marco 4, R1: umidade do ar -> umidificador. Media movel de amostrasMedia leituras; liga abaixo de umidadeArMin e desliga acima de umidadeArMin + histerese. O LIGAR e uma CONCESSAO de concessaoMs: o dispositivo desliga sozinho se o servico nao renovar. tempoMinimoMs evita liga/desliga rapido do rele.",
+    "umidadeArMin": 50,
+    "histerese": 10,
+    "amostrasMedia": 3,
+    "validadeMs": 10000,
+    "concessaoMs": 30000,
+    "tempoMinimoMs": 6000
+  },
+  "reservatorios": {
+    "_comment": "Marco 4, R4: estados do nivel com histerese. CRITICO bloqueia a bomba correspondente -- no servico (nao pede) e no dispositivo (nao executa).",
+    "nivelBaixoPct": 25,
+    "nivelCriticoPct": 10,
+    "histeresePct": 3,
+    "validadeMs": 10000
+  },
+  "verificacao": {
+    "_comment": "Marco 4, R2: depois de um pulso EXECUTADO, a umidade do solo tem de subir deltaUmidadePct E o nivel de agua tem de cair deltaNivelPct dentro de janelaMs. So vale quando o vaso publica nivel de reservatorio.",
+    "janelaMs": 15000,
+    "deltaUmidadePct": 3,
+    "deltaNivelPct": 1,
+    "bloqueioMs": 120000
+  },
+  "adubacao": {
+    "_comment": "Marco 4, R3: adubacao pela EC compensada. Nunca em solo abaixo de umidadeMinPct; dose confirmada por medicao; no maximo maxDoses por janelaDosesMs (7 dias em producao; curto aqui para a demonstracao).",
+    "ec25MinUsCm": 800,
+    "ec25MaxUsCm": 2000,
+    "histereseExcessoUsCm": 100,
+    "umidadeMinPct": 35,
+    "amostrasMedia": 3,
+    "absorcaoMs": 10000,
+    "timeoutIrrigacaoMs": 60000,
+    "timeoutMedicaoMs": 15000,
+    "pulsoMs": 2000,
+    "janelaVerificacaoMs": 20000,
+    "deltaEcUsCm": 100,
+    "deltaNivelPct": 1,
+    "maxDoses": 1,
+    "janelaDosesMs": 60000,
+    "cooldownTentativaMs": 30000
+  }
+}

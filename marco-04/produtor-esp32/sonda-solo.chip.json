@@ -1,0 +1,11 @@
+{
+  "name": "Sonda de Solo 3-em-1 (simulada)",
+  "author": "Grupo Nao de nem agua",
+  "pins": ["VCC", "GND", "UMID", "TEMP", "EC"],
+  "controls": [
+    { "id": "umidade", "label": "Umidade do solo (%)", "type": "range", "min": 0, "max": 100, "step": 1 },
+    { "id": "temperatura", "label": "Temperatura do solo (C)", "type": "range", "min": 0, "max": 50, "step": 0.5 },
+    { "id": "ec25", "label": "EC a 25C (uS/cm)", "type": "range", "min": 0, "max": 3000, "step": 10 },
+    { "id": "falha", "label": "Falha: 0 ok, 1 desconectada, 2 oxidada, 3 ruido", "type": "range", "min": 0, "max": 3, "step": 1 }
+  ]
+}

@@ -1,0 +1,10 @@
+# Bibliotecas adicionais deste projeto.
+# No Wokwi, instalar pela aba "Library Manager". Sem elas a compilacao falha com
+#   fatal error: PubSubClient.h: No such file or directory
+#   fatal error: DHTesp.h: No such file or directory
+PubSubClient
+DHT sensor library for ESPx
+
+# Arquivos do projeto Wokwi (todos nesta pasta):
+#   sketch.ino, diagram.json, sonda_solo.h, reservatorios.h
+#   sonda-solo.chip.json, sonda-solo.chip.c  -> custom chip "sonda-solo" (Marco 4)
