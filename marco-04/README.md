@@ -407,17 +407,3 @@ marco-04/
 ```
 
 ---
-
-## Roteiro da apresentação (10 min)
-
-| Tempo | O quê |
-|---|---|
-| 0:00–1:30 | contexto: produtor, comunicação, consumidor — mostrar `docs/diagramas/componentes.md` |
-| 1:30–4:30 | `npm run broker`, `npm run servico`, `npm run simulador`; `s` para secar; mostrar `eventId` único, a decisão no log, o comando e o ack |
-| 4:30–6:00 | falhas: `k` (LWT + revogação) e o retry duplicado |
-| 6:00–7:00 | decisões: por que MQTT, os dois níveis de versão, onde vive o estado, Android como segundo assinante (ligar o `observador`) |
-| 7:00–9:30 | alteração ao vivo + `npm run teste` para confirmar |
-| 9:30–10:00 | limitações declaradas |
-
-**Antes de sair:** rodar `npm install` e `npm run teste` com internet, e testar o
-caminho B pelo menos uma vez.
