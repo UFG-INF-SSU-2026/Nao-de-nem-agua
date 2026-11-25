@@ -1,0 +1,41 @@
+
+> naodenemagua-marco-04@1.0.0 teste:api
+> node scripts/teste-api.js
+
+
+Teste de integracao da API de historico (HTTPS + leitor_app)
+  banco naodenemagua_teste: 10 min de telemetria conhecida + linhas que devem ser excluidas
+  api em https://localhost:65088
+1. Canal
+  ok    HTTP sem TLS nao obtem resposta
+  ok    cliente que nao confia na CA do grupo recusa o servidor
+  ok    nome do servidor fora do certificado e recusado
+2. Identidade
+  ok    sem credencial: 401 com WWW-Authenticate
+  ok    senha errada: 401
+  ok    usuario inexistente: 401 (mesma resposta, nao revela quem existe)
+3. Autorizacao
+  ok    notificador (credencial valida, outro papel): 403
+  ok    gateway do proprio vaso: 403 (so o app le historico pela API)
+  ok    app-vaso-01 pedindo o vaso-02: 403
+4. Entrada
+  ok    vasoId com SQL: 400, sem consultar o banco
+  ok    horas=0 e horas=9999: 400
+  ok    POST: 405 (somente leitura)
+  ok    rota desconhecida: 404
+5. Dados
+  ok    historico de 1 h: 200 e dentro do contrato HistoricoVaso
+  ok    passo de 1 min para 1 h; ~10 pontos de solo
+  ok    solo = 40% em todos os pontos (leitura invalida e outro vaso excluidos)
+  ok    ar: 55% e 24 C (agregado continuo ambiente_1min)
+  ok    luz = 800 lux (leitura atrasada de 99999 excluida)
+  ok    reservatorios 70% / 90% (evento replayed excluido)
+  ok    resumo: 2 irrigacoes (PARAR nao conta), 1 dose, 3 alertas na hora
+  ok    alertas: dentro do contrato, mais novo primeiro, so do vaso e do periodo
+  ok    limite=1 devolve 1 alerta
+6. Forca bruta
+  ok    depois de 5 senhas erradas: 429 com Retry-After
+  ok    bloqueado, nem a senha certa e conferida (scrypt nao vira alavanca de DoS)
+  ok    a API registra as recusas no log
+
+Resultado: 25 passaram; 0 falharam

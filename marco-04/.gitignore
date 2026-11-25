@@ -6,3 +6,6 @@ eventos.jsonl
 seguranca/certs/
 seguranca/credenciais.json
 seguranca/segredos.json
+
+# Marco 4: senhas do banco (npm run seguranca)
+.env

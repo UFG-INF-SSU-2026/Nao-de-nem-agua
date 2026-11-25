@@ -11,15 +11,27 @@
     "observador": "node scripts/observador.js",
     "teste": "node scripts/teste-integracao.js",
     "ataque": "node scripts/ataques.js",
-    "notificador": "node notificador/src/main.js"
+    "notificador": "node notificador/src/main.js",
+    "banco": "docker compose up -d --wait timescaledb",
+    "banco:parar": "docker compose stop timescaledb",
+    "banco:psql": "docker compose exec timescaledb psql -U postgres -d naodenemagua",
+    "banco:migrar": "node persistencia/cli.js migrar",
+    "banco:seed": "node persistencia/cli.js seed",
+    "banco:consultar": "node persistencia/cli.js consultar",
+    "teste:unidade": "node --test --test-reporter=spec \"persistencia/test/*.test.js\" \"consumidor-servico/test/*.test.js\" \"api-historico/test/*.test.js\"",
+    "teste:persistencia": "node scripts/teste-persistencia.js",
+    "api": "node api-historico/src/main.js",
+    "teste:api": "node scripts/teste-api.js",
+    "app:credencial": "node seguranca/credencial-app.js"
   },
   "dependencies": {
     "aedes": "^0.51.3",
     "ajv": "^8.17.1",
     "mqtt": "^5.10.1",
-    "node-forge": "^1.3.1"
+    "node-forge": "^1.3.1",
+    "pg": "^8.23.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   }
 }

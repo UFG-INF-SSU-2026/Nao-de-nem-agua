@@ -299,6 +299,7 @@ class RegraAdubacao {
     this.desde = agora;
     this.avisos.clear();
     this.d.log.registrar('ADUBACAO', `${anterior} -> ${novo} (${motivo})`, { anterior, atual: novo, motivo });
+    if (this.d.aoMudar) this.d.aoMudar({ anterior, atual: novo, motivo });
   }
 
   avisar(motivo) {
@@ -319,6 +320,68 @@ class RegraAdubacao {
 
   registrarDose(agora) {
     this.doses.push(agora);
+  }
+
+  // -------------------------------------------------------------------------
+  // Marco 4 -- persistencia
+  // -------------------------------------------------------------------------
+
+  /*
+   * Sobrevive ao reinicio: as DOSES na janela (o limite de doses e uma
+   * protecao da planta -- reiniciar o servico nao pode liberar uma dose extra),
+   * o cooldown de tentativa, o BLOQUEIO por falha e o aviso de excesso.
+   * Medias de EC nao: foram medidas antes da interrupcao.
+   */
+  exportar() {
+    return {
+      estado: this.estado,
+      desde: this.desde,
+      doses: this.doses.slice(),
+      ultimaTentativaEm: this.ultimaTentativaEm,
+      excessoAtivo: this.excessoAtivo,
+      bombaAteMs: this.bombaAteMs,
+      comandoId: this.comando ? this.comando.commandId : null
+    };
+  }
+
+  /*
+   * Estados transitorios nao sao retomados -- a maquina volta a OCIOSO com o
+   * cooldown de tentativa reiniciado. A excecao e uma dose que PODE ter
+   * acontecido: comando de dose publicado (DOSANDO com comando) ou ja
+   * confirmado (VERIFICANDO, dose ja contada). A suposicao segura sobre um
+   * efeito fisico e a de que ocorreu (mesma politica do ack perdido), entao
+   * ela conta no limite.
+   */
+  restaurar(s, agora) {
+    if (!s) return [];
+    const notas = [];
+    this.doses = (s.doses || []).filter((t) => typeof t === 'number');
+    this.ultimaTentativaEm = s.ultimaTentativaEm ?? null;
+    this.excessoAtivo = Boolean(s.excessoAtivo);
+    this.bombaAteMs = s.bombaAteMs || 0;
+    this.comando = null;
+    this.ecJanela = [];
+    this.medicao = [];
+    this.avisos.clear();
+
+    if (s.estado === ESTADOS_ADUBO.BLOQUEADA) {
+      this.estado = ESTADOS_ADUBO.BLOQUEADA;
+      this.desde = s.desde ?? agora;
+      notas.push('adubacao continua bloqueada (falha anterior ao reinicio)');
+    } else {
+      this.estado = ESTADOS_ADUBO.OCIOSO;
+      this.desde = agora;
+      if (s.estado === ESTADOS_ADUBO.DOSANDO && s.comandoId) {
+        this.registrarDose(agora);
+        notas.push(`dose ${s.comandoId} em curso no reinicio: assumida como aplicada`);
+      }
+      if (s.estado && s.estado !== ESTADOS_ADUBO.OCIOSO) {
+        this.ultimaTentativaEm = agora;
+        notas.push(`adubacao em ${s.estado} interrompida -> OCIOSO`);
+      }
+    }
+    notas.push(`${this.dosesNaJanela(agora)} dose(s) na janela`);
+    return notas;
   }
 
   fmt(v) {

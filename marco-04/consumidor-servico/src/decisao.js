@@ -151,4 +151,18 @@ function montarComando(estadoVaso, cfg, acao, motivo) {
   return comando;
 }
 
-module.exports = { decidir };
+/*
+ * Marco 4 -- persistencia. O contador de comandos sobrevive ao reinicio: o
+ * dispositivo guarda as idempotencyKey ja aplicadas, e um servico que
+ * recomecasse em cmd-000001 teria o primeiro comando recusado como
+ * IGNORADO_DUPLICADO.
+ */
+function contadorAtual() {
+  return contadorComandos;
+}
+
+function restaurarContador(valor) {
+  if (Number.isInteger(valor) && valor > contadorComandos) contadorComandos = valor;
+}
+
+module.exports = { decidir, contadorAtual, restaurarContador };

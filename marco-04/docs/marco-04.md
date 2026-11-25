@@ -210,7 +210,121 @@ existe para a bomba de adubo; `PULSO` não existe para o umidificador).
 
 ---
 
-## 6. Como demonstrar
+## 6. O segundo par produtor-consumidor: serviço → notificador
+
+> **Em uma frase.** A partir do Marco 3 o `servico-irrigacao` deixou de ser só
+> consumidor: ele também **produz** eventos `AlertaCuidado`, e o
+> **notificador** — um processo separado que faz o papel do aplicativo ou da
+> Alexa — é o **consumidor** desse fluxo novo. No Marco 4 esse fluxo carrega
+> também os 11 alertas novos (reservatórios, sensores, adubação, falha de
+> irrigação).
+
+O "novo produtor" **não é um processo novo**: é o mesmo serviço assumindo um
+segundo papel. O que é novo é o **dado** (`AlertaCuidado`), o **tópico**
+(`alert/cuidado`), o **consumidor** (`notificador`) e a **identidade** dele no
+broker.
+
+### Os fluxos da fronteira
+
+| # | Produtor | Dado | Tópico | Consumidor | Desde |
+|:---:|---|---|---|---|:---:|
+| 1 | dispositivo | leituras (solo, ar, nível), heartbeat, acks | `telemetry/#`, `status/heartbeat`, `ack/#` | serviço | Marco 2 / 4 |
+| 2 | serviço | comandos | `command/irrigacao`, `command/atuador` | dispositivo | Marco 2 / 4 |
+| **3** | **serviço** | **`AlertaCuidado`** | **`alert/cuidado`** | **notificador** | **Marco 3 / 4** |
+
+```mermaid
+flowchart LR
+    D["Dispositivo<br/>(ESP32 / simulador)"]
+    B{{"Broker MQTT<br/>TLS + ACL"}}
+    S["servico-irrigacao<br/>CONSUMIDOR de telemetria<br/>PRODUTOR de comandos e alertas"]
+    N["notificador<br/>CONSUMIDOR de alertas<br/>(lugar do app / Alexa)"]
+    O["observador<br/>diagnóstico, lê tudo"]
+
+    D -- "fluxo 1: telemetry, heartbeat, ack" --> B
+    B -- "fluxo 1" --> S
+    S -- "fluxo 2: command/*" --> B
+    B -- "fluxo 2" --> D
+    S == "fluxo 3: alert/cuidado (QoS 1, não retido)" ==> B
+    B == "fluxo 3: alert/#" ==> N
+    B -. "tudo" .-> O
+```
+
+O serviço é o elo: ele **consome** o fluxo 1 e, a partir do estado que mantém,
+**produz** os fluxos 2 (o que o vaso deve fazer) e 3 (o que a pessoa deve
+saber).
+
+### O que cada lado garante
+
+| Produtor (`consumidor-servico/src/alertas.js`) | Consumidor (`notificador/src/main.js`) |
+|---|---|
+| `eventId` único: `servico-irrigacao:{execução}:{sequência}` | Desserialização tolerante: JSON malformado é descartado com motivo, sem derrubar o processo |
+| Valida o próprio alerta contra o schema **antes** de publicar | Valida de novo: versão e schema `AlertaCuidado` v1 |
+| `correlationId` aponta para a causa (o `eventId` da leitura ou o `commandId` do comando) | Confere a **origem**: vaso configurado e tópico `alert/cuidado` |
+| Emite só nas **transições** (solo seco 3 vezes = 1 alerta) | **Deduplica** pelos últimos 500 `eventId` (QoS 1 pode entregar duas vezes) |
+| `issuedAt` + `ttlMs` (60 s) | Descarta alerta **vencido**: um aviso velho não vira notificação |
+| QoS 1, sem retain | Reconecta e refaz a assinatura sozinho |
+| Pela ACL, só ele publica em `alert/` | Pela ACL, **só lê** `alert/#`: não consegue comandar a bomba |
+
+A cadeia é auditável ponta a ponta: o cartão do notificador mostra o
+`correlationId`, e o `eventos.jsonl` do serviço liga esse id à leitura ou ao
+comando que gerou o alerta.
+
+### Por que um processo separado, e não um `console.log` no serviço
+
+1. **Falha isolada.** Notificador caído, lento ou recebendo lixo não atrasa nem
+   para a irrigação. O serviço publica e segue, sem saber se alguém está ouvindo.
+2. **Menor privilégio.** Quem mostra avisos ao usuário não precisa (nem pode)
+   comandar atuadores. Num processo próprio isso vira **regra do broker**, e o
+   ataque `npm run ataque -- notificador-comanda` mostra a recusa.
+3. **Troca sem tocar no serviço.** Terminal hoje, app ou Alexa amanhã: troca-se
+   o assinante, mantendo contrato e tópico. Vários consumidores podem assinar o
+   mesmo alerta ao mesmo tempo.
+
+### Notificador × observador
+
+Os dois só leem, mas têm papéis diferentes:
+
+| | Observador (Marco 2) | Notificador (Marco 3) |
+|---|---|---|
+| Para quem | o desenvolvedor | o usuário da planta |
+| Assina | **tudo** (`{prefixo}/#`) | só `alert/#` |
+| Valida contrato, deduplica, expira | não — imprime o que passa | **sim** |
+| Papel | grampo de diagnóstico | consumidor de um contrato |
+
+### Limitações deste fluxo
+
+- **Alerta não é retido.** Notificador desligado perde os avisos daquele
+  período. É uma escolha (aviso velho é ruído); um app real teria histórico.
+- **Alerta sem HMAC.** No broker local só o serviço publica em `alert/` (ACL);
+  no broker público, sem ACL, um terceiro poderia forjar um aviso. O efeito é
+  informativo, não físico (ver `seguranca.md`, limitação 7).
+- **Mão única.** O notificador não responde. Reconhecer uma falha (hoje a tecla
+  `r` do serviço) exigirá um comando do app para o serviço — ver §9.
+- Relógios do serviço e do notificador precisam estar sincronizados para o TTL.
+
+### Como ver funcionando
+
+Com os quatro terminais do README, cada tecla no simulador produz um cartão no
+notificador:
+
+| Tecla no simulador | Cartão no notificador |
+|:---:|---|
+| `s` | `ATENCAO — SOLO SECO`, depois `INFO — IRRIGACAO EXECUTADA` |
+| `r` | `CRITICO — RESERVATORIO CRITICO` |
+| `w` | `INFO — RESERVATORIO NORMALIZADO` |
+| `f` depois `s` | `CRITICO — FALHA IRRIGACAO` |
+| `h` | `INFO — UMIDIFICADOR ACIONADO` |
+| `z` | `ATENCAO — SENSOR FALHOU` |
+| `b` | `ATENCAO — EXCESSO NUTRIENTES` |
+| `k` | `CRITICO — DISPOSITIVO OFFLINE` |
+
+No `npm run teste`, a seção 8 cobre o par (acks fora de ordem, duplicatas,
+expiração, lixo no tópico), a seção 11 prova que o notificador não publica e a
+seção 18 confere que os alertas novos do Marco 4 chegam até ele.
+
+---
+
+## 7. Como demonstrar
 
 **Caminho A (local, recomendado):** os quatro terminais do README. No simulador:
 
@@ -233,7 +347,7 @@ HC-SR04 durante o pulso.
 
 ---
 
-## 7. Limitações declaradas
+## 8. Limitações declaradas
 
 1. **Nenhuma grandeza nova é medida de verdade.** Sonda por custom chip; DHT22 e
    HC-SR04 por slider; no simulador Node, uma física simples declarada.
@@ -245,19 +359,30 @@ HC-SR04 durante o pulso.
 4. **Comandos de atuador ancorados em evento antigo podem chegar vencidos** —
    por exemplo o `DESLIGAR` emitido quando o dado do ar expira. É por isso que o
    umidificador funciona por concessão: ele desliga de qualquer jeito.
-5. **Um vaso, uma espécie.** Os limiares (umidade do ar, EC) estão no
-   `config.json`, não numa matriz por espécie.
-6. **Estado em memória**, como no Marco 3: doses aplicadas e bloqueios se perdem
-   se o serviço reiniciar.
+5. ~~**Um vaso, uma espécie.**~~ **Resolvida:** os limiares vêm do perfil de
+   cuidado da espécie, do grupo e do vaso, guardados no banco e aplicados sem
+   reiniciar o serviço → [`persistencia.md`, §5](persistencia.md#5-perfil-de-cuidado-por-espécie-grupo-e-vaso).
+   O serviço ainda atende um vaso por processo.
+6. ~~**Estado em memória.**~~ **Resolvida:** histórico em TimescaleDB e
+   snapshot do estado das regras restaurado na partida — doses, bloqueios,
+   deduplicação e contadores sobrevivem a um `SIGKILL` →
+   [`persistencia.md`](persistencia.md). Limitações da persistência em §7 de lá.
 
 ---
 
-## 8. Próximo passo: o aplicativo
+## 9. Próximo passo: o aplicativo
 
-O app previsto entra como **mais um assinante** dos tópicos — o lugar que o
-`observador` ocupa hoje —, sem mudar produtor nem serviço. Ele herda
-naturalmente: o estado dos reservatórios, os alertas novos e o
-**reconhecimento de falha** (hoje a tecla `r` do serviço), que precisará de um
+> **Atualização:** o backend do app está pronto — identidade e papel `app` na
+> ACL, estado corrente retido (`EstadoVaso`), o caminho de volta
+> (`SolicitacaoApp` → `RespostaApp`, que substitui a tecla `r`) e a seção 19 de
+> testes. Ver [`aplicativo.md`](aplicativo.md). O texto abaixo é o plano original.
+
+O app previsto entra como **mais um assinante**, sem mudar produtor nem
+serviço. Para os avisos ele ocupa o lugar do **notificador** (§6): consome
+`AlertaCuidado` em `alert/#` com as mesmas validações. Para mostrar o estado
+corrente (nível dos reservatórios, umidade), assina também a telemetria, como o
+`observador` faz hoje. O que ainda não existe é o caminho de volta: o
+**reconhecimento de falha** (hoje a tecla `r` do serviço) precisará de um
 comando próprio do app para o serviço. O sensor do celular previsto é o de
 **luz ambiente** (Android `Sensor.TYPE_LIGHT`, em lux), para escolher o melhor
 lugar do vaso e calibrar o sensor de luz do dispositivo.

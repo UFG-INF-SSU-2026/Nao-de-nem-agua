@@ -1,0 +1,62 @@
+# Fase 4 -- luz do sensor do celular (Galaxy A16, TCS3701) gravada no TimescaleDB
+# 2026-11-24T21:08:02Z -- docker compose exec timescaledb psql -U postgres -d naodenemagua
+
+  device_id  | leituras | lux_medio |          primeira          |           ultima           | alguma_atrasada 
+-------------+----------+-----------+----------------------------+----------------------------+-----------------
+ app-vaso-01 |       22 |       145 | 2026-11-24 21:05:36.728+00 | 2026-11-24 21:08:02.329+00 | f
+(1 row)
+
+             ts             |       tipo       | severidade |                                            mensagem                                             
+----------------------------+------------------+------------+-------------------------------------------------------------------------------------------------
+ 2026-11-24 21:06:01.378+00 | LUZ_INSUFICIENTE | ATENCAO    | Pouca luz: media de 149 lux (minimo 300). Leve o vaso para perto de uma janela, sem sol direto.
+ 2026-11-24 21:07:41.824+00 | LUZ_INSUFICIENTE | ATENCAO    | Pouca luz: media de 140 lux (minimo 300). Leve o vaso para perto de uma janela, sem sol direto.
+(2 rows)
+
+             ts             |  anterior   |    atual    |        motivo        
+----------------------------+-------------+-------------+----------------------
+ 2026-11-24 21:06:01.378+00 | SEM_MEDICAO | POUCA_LUZ   | media_sustentada_15s
+ 2026-11-24 21:07:01.539+00 | POUCA_LUZ   | SEM_MEDICAO | validade_expirada
+ 2026-11-24 21:07:41.823+00 | SEM_MEDICAO | POUCA_LUZ   | media_sustentada_15s
+(3 rows)
+
+# Log do servico (trecho):
+              naodenemagua/v1/vaso/vaso-01/telemetry/light  (app: sensor de luz do celular)
+21:04:22.935 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:27.948 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:32.961 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:37.973 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:42.986 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:48.004 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:53.030 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:04:58.049 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:03.075 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:08.131 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:13.174 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:18.197 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:23.210 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:28.219 REJEITADO  LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"
+21:05:36.298 RECEBIDO   app-vaso-01:5c064442:1 luz 149 lux (25 amostras)
+21:05:41.326 RECEBIDO   app-vaso-01:5c064442:2 luz 149 lux (22 amostras)
+21:05:46.342 RECEBIDO   app-vaso-01:5c064442:3 luz 150 lux (20 amostras)
+21:05:51.362 RECEBIDO   app-vaso-01:5c064442:4 luz 149 lux (21 amostras)
+21:05:56.375 RECEBIDO   app-vaso-01:5c064442:5 luz 148 lux (22 amostras)
+21:06:01.378 ESTADO     luz SEM_MEDICAO -> POUCA_LUZ (media_sustentada_15s; media 149 lux)
+21:06:01.378 ALERTA     servico-irrigacao:7b491c9e-1922-4d1d-a749-9a307bd9f2e7:000003 LUZ_INSUFICIENTE ATENCAO origem=app-vaso-01:5c064442:5
+21:06:01.386 RECEBIDO   app-vaso-01:5c064442:6 luz 150 lux (24 amostras)
+21:06:06.397 RECEBIDO   app-vaso-01:5c064442:7 luz 150 lux (21 amostras)
+21:06:11.408 RECEBIDO   app-vaso-01:5c064442:8 luz 139 lux (19 amostras)
+21:06:16.427 RECEBIDO   app-vaso-01:5c064442:9 luz 141 lux (15 amostras)
+21:06:21.447 RECEBIDO   app-vaso-01:5c064442:10 luz 140 lux (10 amostras)
+21:06:26.463 RECEBIDO   app-vaso-01:5c064442:11 luz 138 lux (19 amostras)
+21:06:31.481 RECEBIDO   app-vaso-01:5c064442:12 luz 138 lux (23 amostras)
+21:07:01.538 ESTADO     luz POUCA_LUZ -> SEM_MEDICAO (validade_expirada; media - lux)
+21:07:16.728 RECEBIDO   app-vaso-01:cc81bd19:1 luz 141 lux (14 amostras)
+21:07:21.748 RECEBIDO   app-vaso-01:cc81bd19:2 luz 140 lux (22 amostras)
+21:07:26.768 RECEBIDO   app-vaso-01:cc81bd19:3 luz 140 lux (19 amostras)
+21:07:31.783 RECEBIDO   app-vaso-01:cc81bd19:4 luz 137 lux (17 amostras)
+21:07:36.800 RECEBIDO   app-vaso-01:cc81bd19:5 luz 141 lux (6 amostras)
+21:07:41.823 RECEBIDO   app-vaso-01:cc81bd19:6 luz 141 lux (5 amostras)
+21:07:41.823 ESTADO     luz SEM_MEDICAO -> POUCA_LUZ (media_sustentada_15s; media 140 lux)
+21:07:41.824 ALERTA     servico-irrigacao:7b491c9e-1922-4d1d-a749-9a307bd9f2e7:000006 LUZ_INSUFICIENTE ATENCAO origem=app-vaso-01:cc81bd19:6
+21:07:46.852 RECEBIDO   app-vaso-01:cc81bd19:7 luz 149 lux (8 amostras)
+21:07:51.870 RECEBIDO   app-vaso-01:cc81bd19:8 luz 156 lux (7 amostras)

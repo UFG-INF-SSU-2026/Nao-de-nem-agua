@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Marca "Nao de nem agua": uma gota d'agua com um broto nascendo dentro.
+  Desenhada dentro da zona segura do icone adaptativo (circulo de 66 dp no
+  centro do quadro de 108 dp), para nao ser cortada por nenhuma mascara.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- sombra da gota -->
+    <path
+        android:fillColor="#26000000"
+        android:pathData="M55.5,26C55.5,26 35.5,48.5 35.5,64.5C35.5,75.55 44.45,84.5 55.5,84.5C66.55,84.5 75.5,75.55 75.5,64.5C75.5,48.5 55.5,26 55.5,26Z" />
+
+    <!-- gota -->
+    <path android:pathData="M54,23C54,23 34,46 34,62C34,73.05 42.95,82 54,82C65.05,82 74,73.05 74,62C74,46 54,23 54,23Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="23"
+                android:endX="54"
+                android:endY="82">
+                <item android:offset="0.0" android:color="#FFF2FBFF" />
+                <item android:offset="1.0" android:color="#FFB5E3F7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- reflexo -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#CCFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.6"
+        android:pathData="M68.5,63.5C68.5,69.5 64.5,74.8 59,76.6" />
+
+    <!-- terra -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1B6E47"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.4"
+        android:pathData="M45.5,76C49,73.8 59,73.8 62.5,76" />
+
+    <!-- caule -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1B7A4C"
+        android:strokeLineCap="round"
+        android:strokeWidth="3"
+        android:pathData="M54,74.5L54,58" />
+
+    <!-- folha esquerda -->
+    <path
+        android:fillColor="#FF2E9E5E"
+        android:pathData="M54,65C47,65 43,60.5 43,53C49.5,53 54,57.5 54,65Z" />
+
+    <!-- folha direita -->
+    <path
+        android:fillColor="#FF3DB571"
+        android:pathData="M54,60C54,52 58.5,47 65,47C65,54 60.5,60 54,60Z" />
+
+    <!-- nervuras -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#66FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="1"
+        android:pathData="M53,63.5L46,55.5M55,58.5L62.5,50" />
+</vector>

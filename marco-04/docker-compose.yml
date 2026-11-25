@@ -1,0 +1,35 @@
+# Marco 4 -- armazenamento do servico-irrigacao.
+#
+# TimescaleDB = PostgreSQL + extensao de series temporais. Um so banco guarda
+# o HISTORICO (hypertables de telemetria, comandos, acks, alertas, transicoes)
+# e o ESTADO das regras e o CADASTRO (tabelas comuns). Ver docs/persistencia.md.
+#
+# Senhas: vem do arquivo .env (gerado por `npm run seguranca`, fora do Git).
+# O volume nomeado e o que preserva os dados quando o conteiner reinicia.
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: naodenemagua-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?rode npm run seguranca para gerar o .env}
+      POSTGRES_DB: naodenemagua
+      PERSISTENCIA_SENHA_SERVICO: ${PERSISTENCIA_SENHA_SERVICO:?rode npm run seguranca}
+      PERSISTENCIA_SENHA_LEITOR: ${PERSISTENCIA_SENHA_LEITOR:?rode npm run seguranca}
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      # So na interface local: o banco nao fica exposto na rede.
+      - "127.0.0.1:${PERSISTENCIA_PORTA:-5432}:5432"
+    volumes:
+      - naodenemagua-dados:/var/lib/postgresql/data
+      - ./persistencia/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d naodenemagua"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  naodenemagua-dados:

@@ -1,0 +1,3 @@
+# Scripts executados dentro do conteiner Linux: CRLF quebraria o bash.
+*.sh text eol=lf
+*.sql text eol=lf

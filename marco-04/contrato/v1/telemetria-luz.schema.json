@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/telemetria-luz",
+  "title": "LeituraLuz v1",
+  "description": "Marco 4: iluminancia medida pelo sensor de luz do CELULAR (Android Sensor.TYPE_LIGHT), publicada pelo app em naodenemagua/v1/vaso/{vasoId}/telemetry/light (QoS 1, retain false). O app e um segundo produtor do sistema. Sem HMAC: a origem e garantida pelo broker (so o papel app do vaso publica aqui, com o proprio deviceId). Alimenta a regra R5 (luz) no servico.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "eventType", "deviceId", "entityId", "sequence", "measuredAt", "valid"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+:[a-f0-9]{4,16}:[0-9]+$",
+      "description": "deviceId:sessao:sequence. A sessao muda a cada vez que o app comeca a medir; o sequence cresce dentro dela."
+    },
+    "eventType": { "const": "LeituraLuz" },
+    "deviceId": { "type": "string", "minLength": 1 },
+    "entityId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "measuredAt": {
+      "type": "string",
+      "format": "utc-date-time",
+      "description": "Fim da janela de medicao, no relogio do celular. Leitura que chega mais velha que a validade e arquivada, mas nao decide."
+    },
+    "lux": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 200000,
+      "description": "Media das amostras da janela, em lux. Sol direto ~100000; interior claro perto da janela ~1000-10000; sala comum ~100-500."
+    },
+    "samples": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Amostras na janela. O sensor do Android e 'on-change': 0 significa que a luz nao variou e vale a ultima leitura."
+    },
+    "windowMs": { "type": "integer", "minimum": 1, "description": "Duracao da janela de medicao." },
+    "sensor": { "type": "string", "maxLength": 80, "description": "Nome do sensor do aparelho (diagnostico)." },
+    "valid": { "type": "boolean" },
+    "invalidReason": { "type": "string", "maxLength": 80 }
+  },
+  "if": { "properties": { "valid": { "const": true } } },
+  "then": { "required": ["lux"] }
+}

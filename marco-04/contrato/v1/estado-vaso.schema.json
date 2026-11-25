@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/estado-vaso",
+  "title": "EstadoVaso v1",
+  "description": "Marco 4: fotografia do estado que o SERVICO mantem sobre o vaso, publicada RETIDA em naodenemagua/v1/vaso/{vasoId}/state/vaso (QoS 1). Quem assina recebe a ultima na hora, sem esperar a proxima mudanca -- e o que o app mostra ao abrir. Republicada a cada mudanca e, sem mudanca, a cada app.estadoIntervaloMs: um generatedAt antigo significa servico parado (a mensagem retida sobrevive a ele).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventType", "producerId", "entityId", "generatedAt", "publishIntervalMs", "solo", "ar", "reservatorios", "irrigacao", "adubacao", "falhaPendente"],
+  "$defs": {
+    "numeroOuNulo": { "type": ["number", "null"] },
+    "reservatorio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "nivelPct"],
+      "properties": {
+        "estado": { "type": "string", "minLength": 1, "description": "OK, BAIXO, CRITICO, INVALIDO, DESCONHECIDO..." },
+        "nivelPct": { "$ref": "#/$defs/numeroOuNulo" }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "EstadoVaso" },
+    "producerId": { "const": "servico-irrigacao" },
+    "entityId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "utc-date-time" },
+    "publishIntervalMs": { "type": "integer", "minimum": 1, "description": "Periodo maximo entre duas publicacoes. O app considera o servico parado depois de ~3x esse tempo sem atualizacao." },
+    "solo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "umidadePct", "idadeMs", "bombaLigada", "autorizado"],
+      "properties": {
+        "estado": { "type": "string", "minLength": 1, "description": "DESCONHECIDO, NORMAL, AGUARDANDO, AUTORIZADO, DADO_OBSOLETO, LEITURA_INVALIDA, DISPOSITIVO_OFFLINE" },
+        "umidadePct": { "$ref": "#/$defs/numeroOuNulo" },
+        "idadeMs": { "type": ["integer", "null"], "description": "Idade da ultima leitura valida no instante generatedAt." },
+        "bombaLigada": { "type": "boolean" },
+        "autorizado": { "type": "boolean" }
+      }
+    },
+    "ar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "umidadePct", "temperaturaC", "umidificadorLigado"],
+      "properties": {
+        "estado": { "type": "string", "minLength": 1 },
+        "umidadePct": { "$ref": "#/$defs/numeroOuNulo", "description": "Media movel usada pela regra R1." },
+        "temperaturaC": { "$ref": "#/$defs/numeroOuNulo" },
+        "umidificadorLigado": { "type": "boolean" }
+      }
+    },
+    "reservatorios": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "AGUA": { "$ref": "#/$defs/reservatorio" },
+        "ADUBO": { "$ref": "#/$defs/reservatorio" }
+      }
+    },
+    "irrigacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bloqueada", "motivo"],
+      "properties": {
+        "bloqueada": { "type": "boolean" },
+        "motivo": { "type": ["string", "null"], "description": "reservatorio_agua_critico, irrigacao_bloqueada_sem_efeito, ... (null quando liberada)." }
+      }
+    },
+    "adubacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "ec25UsCm", "dosesNaJanela", "excesso"],
+      "properties": {
+        "estado": { "type": "string", "minLength": 1 },
+        "ec25UsCm": { "$ref": "#/$defs/numeroOuNulo" },
+        "dosesNaJanela": { "type": "integer", "minimum": 0 },
+        "excesso": { "type": "boolean" }
+      }
+    },
+    "falhaPendente": {
+      "type": "boolean",
+      "description": "true quando ha falha de irrigacao ou de adubacao aguardando reconhecimento: e quando o app habilita o botao 'Reconhecer falha'."
+    },
+    "luz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["estado", "luxMedia", "idadeMs"],
+      "description": "Opcional (acrescentado sem mudar a versao): regra R5, alimentada pelo sensor de luz do celular.",
+      "properties": {
+        "estado": { "enum": ["SEM_MEDICAO", "ADEQUADA", "POUCA_LUZ", "LUZ_EXCESSIVA"] },
+        "luxMedia": { "type": ["integer", "null"] },
+        "idadeMs": { "type": ["integer", "null"] }
+      }
+    },
+    "falhasPendentes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["IRRIGACAO", "ADUBACAO"] },
+      "description": "Opcional (acrescentado sem mudar a versao): QUAIS falhas o reconhecimento libera. IRRIGACAO = pulso sem efeito confirmado (R2); ADUBACAO = dose sem efeito (R3). Distinto de irrigacao.motivo, que e o bloqueio EFETIVO agora -- um reservatorio critico bloqueia, mas nao se resolve reconhecendo."
+    }
+  }
+}

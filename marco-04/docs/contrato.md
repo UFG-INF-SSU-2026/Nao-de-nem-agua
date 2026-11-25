@@ -46,6 +46,16 @@ declarado, não algo que passa despercebido.
 | `naodenemagua/v1/vaso/{vasoId}/status/heartbeat` | dispositivo → serviço | `EstadoConectividade` | 1 | **sim** + LWT |
 | `naodenemagua/v1/vaso/{vasoId}/command/irrigacao` | serviço → dispositivo | `ComandoIrrigacao` | 1 | não |
 | `naodenemagua/v1/vaso/{vasoId}/ack/irrigacao` | dispositivo → serviço | `ConfirmacaoAtuacao` | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/state/vaso` | serviço → app | `EstadoVaso` (Marco 4) | 1 | **sim** |
+| `naodenemagua/v1/vaso/{vasoId}/app/solicitacao` | app → serviço | `SolicitacaoApp` (Marco 4) | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/app/resposta` | serviço → app | `RespostaApp` (Marco 4) | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/telemetry/light` | **app** → serviço | `LeituraLuz` (Marco 4, sensor do celular) | 1 | não |
+
+> **Marco 4 — aplicativo.** Os três contratos acima, a identidade `app-vaso-01`
+> e o papel `app` da ACL estão em [`aplicativo.md`](aplicativo.md). A `LeituraLuz`
+> (o app como produtor), a regra R5 e os alertas `LUZ_INSUFICIENTE`,
+> `LUZ_EXCESSIVA` e `LUZ_NORMALIZADA` estão no §7 de lá. `EstadoVaso` ganhou os
+> campos opcionais `luz` e `falhasPendentes` (campo opcional mantém a v1).
 
 Telemetria e comando ficam em ramos separados porque têm compromissos
 diferentes: telemetria pode ser frequente e tolerar perda; comando produz

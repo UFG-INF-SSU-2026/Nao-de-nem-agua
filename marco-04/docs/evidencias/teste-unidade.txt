@@ -1,0 +1,52 @@
+
+> naodenemagua-marco-04@1.0.0 teste:unidade
+> node --test --test-reporter=spec "persistencia/test/*.test.js" "consumidor-servico/test/*.test.js" "api-historico/test/*.test.js"
+
+✔ parametros validos e passo conforme o periodo (2.9309ms)
+✔ parametros fora da faixa sao RECUSADOS, nao corrigidos (0.5685ms)
+✔ vasoId so com o formato esperado (nada de SQL nem caminho) (0.4179ms)
+✔ Basic: le usuario e senha; recusa cabecalho malformado (0.5308ms)
+✔ autorizacao: so o app, so o proprio vaso (0.3603ms)
+✔ limite de tentativas por IP, com janela (1.589ms)
+✔ primeira classificacao ADEQUADA so com a janela cheia (1.9296ms)
+✔ pouca luz momentanea (mao sobre o sensor) NAO muda o estado (0.3202ms)
+✔ pouca luz SUSTENTADA vira POUCA_LUZ depois do tempo minimo (0.1911ms)
+✔ histerese: para sair de POUCA_LUZ a media precisa passar luxMin + margem (0.2723ms)
+✔ luz excessiva sustentada vira LUZ_EXCESSIVA (0.1875ms)
+✔ sem leitura pela validade: SEM_MEDICAO (silencio nao e luz adequada) (0.1529ms)
+✔ leitura invalida do celular descarta a media (0.2473ms)
+✔ contrato LeituraLuz: lux obrigatorio quando valida; faixa fisica (2.5569ms)
+✔ grava com o banco no ar e preenche id, ts e vaso_id (3.8383ms)
+✔ banco fora: enfileira sem lancar; na volta despeja tudo em ordem (2.1013ms)
+✔ fila cheia descarta as gravacoes MAIS ANTIGAS e conta (0.8636ms)
+✔ erro de DADO descarta so a linha ruim; a fila segue (0.7259ms)
+✔ snapshot de estado: so o mais recente e escrito, inclusive depois de uma queda (0.717ms)
+✔ tabela fora da lista e recusada (nao vira SQL) (0.8328ms)
+✔ desabilitada: nao grava nada e nao tenta conectar (26.4336ms)
+✔ classificacao de erros: conexao re-tenta, dado descarta (0.3008ms)
+✔ as chaves do perfil saem do schema (1.8232ms)
+✔ sem cadastro: tudo vem do config.json (0.4127ms)
+✔ precedencia: especie < grupo < vaso; o resto continua do padrao (1.2872ms)
+✔ variavel de ambiente vence o cadastro (alteracao ao vivo do README) (0.5096ms)
+✔ camada invalida e ignorada com motivo; as outras valem (0.3294ms)
+✔ campo desconhecido no perfil e rejeitado pelo schema (0.3055ms)
+✔ combinacao incoerente (liga >= desliga) nao e aplicada (0.2871ms)
+✔ aplicarPerfil muda o cfg em lugar e devolve as mudancas; voltar ao padrao desfaz (0.5837ms)
+✔ solo: AUTORIZADO nao e restaurado; dedup, cooldown e ultimo valor sim (1.4008ms)
+✔ solo: sem leitura anterior volta DESCONHECIDO (0.2239ms)
+✔ solo: a contagem de secas recomeca depois de restaurar (0.1479ms)
+✔ verificacao: bloqueio sobrevive; verificacao em curso e descartada (0.4916ms)
+✔ adubacao: doses na janela sobrevivem (limite nao e burlado reiniciando) (0.4232ms)
+✔ adubacao: DOSANDO com comando publicado conta a dose (suposicao segura) (0.217ms)
+✔ adubacao: DOSANDO sem comando (nada saiu) nao conta dose (0.1426ms)
+✔ adubacao: BLOQUEADA continua bloqueada com o mesmo inicio (0.116ms)
+✔ ambiente: umidificador volta desligado; tempo minimo entre trocas preservado (0.4257ms)
+✔ contador de comandos nao volta para tras (0.416ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1702.4418

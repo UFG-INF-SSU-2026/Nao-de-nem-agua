@@ -1,5 +1,45 @@
 # Diagramas de sequência
 
+## Marco 4 — aplicativo: falha, reconhecimento e luz
+
+O app participa do fluxo nos dois sentidos: **consome** o estado e os alertas e
+**produz** a luz medida pelo celular e o pedido de reconhecimento. Quem decide é
+sempre o serviço. Ver [`aplicativo.md`](../aplicativo.md).
+
+```mermaid
+sequenceDiagram
+    participant G as Dispositivo
+    participant B as Broker MQTT (TLS + ACL)
+    participant S as Serviço
+    participant A as App Android
+    participant DB as TimescaleDB
+    G->>B: ack EXECUTADO do pulso
+    B->>S: ack/irrigacao
+    Note over S: R2: umidade não subiu e nível não caiu na janela
+    S->>DB: transição BLOQUEADA, alerta
+    S->>B: alert/cuidado FALHA_IRRIGACAO
+    S->>B: state/vaso (retido) falhaPendente=true, falhasPendentes=[IRRIGACAO]
+    B->>A: alerta + estado
+    Note over A: cartão vermelho, botão Reconhecer falha
+    A->>B: app/solicitacao RECONHECER_FALHA (requestId, createdAt, ttlMs)
+    Note over B: ACL: só o papel app publica aqui, com o próprio deviceId
+    B->>S: SolicitacaoApp
+    S->>S: contrato, requestId inédito, dentro do prazo
+    S->>S: libera R2 e decide de novo
+    S->>B: app/resposta EXECUTADA
+    S->>B: command/irrigacao PULSO_IRRIGACAO
+    B->>A: RespostaApp → "Falha reconhecida"
+    B->>G: comando assinado (HMAC)
+    loop a cada 5 s, com o app na tela
+        A->>B: telemetry/light LeituraLuz (média da janela)
+        B->>S: LeituraLuz
+        S->>DB: telemetria_luz
+        Note over S: R5: média, histerese, tempo mínimo de 15 s, validade 30 s
+    end
+    S->>B: alert/cuidado LUZ_INSUFICIENTE (só se sustentado)
+    B->>A: alerta "Pouca luz"
+```
+
 ## Marco 3 — ciclo de alertas
 
 ```mermaid

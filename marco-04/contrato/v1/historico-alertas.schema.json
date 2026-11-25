@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/historico-alertas",
+  "title": "HistoricoAlertas v1",
+  "description": "Marco 4: resposta de GET /v1/vasos/{vasoId}/alertas?horas=N&limite=M da API de historico. Os alertas gravados pelo servico na hypertable alertas, mais novo primeiro -- o que o app nao guarda entre uma sessao e outra.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventType", "entityId", "geradoEm", "horas", "alertas"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "HistoricoAlertas" },
+    "entityId": { "type": "string", "minLength": 1 },
+    "geradoEm": { "type": "string", "format": "utc-date-time" },
+    "horas": { "type": "integer", "minimum": 1 },
+    "alertas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ts", "tipo", "severidade", "mensagem"],
+        "properties": {
+          "ts": { "type": "string", "format": "utc-date-time" },
+          "tipo": { "type": "string", "minLength": 1 },
+          "severidade": { "enum": ["INFO", "ATENCAO", "CRITICO"] },
+          "mensagem": { "type": "string" }
+        }
+      }
+    }
+  }
+}

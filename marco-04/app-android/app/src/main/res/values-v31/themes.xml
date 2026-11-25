@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash do sistema (Android 12+): a gota com broto sobre o fundo da marca. -->
+    <style name="Theme.NaoDeNemAgua" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/fundo_claro</item>
+        <item name="android:colorAccent">@color/folha</item>
+        <item name="android:windowSplashScreenBackground">@color/fundo_claro</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/folha</item>
+    </style>
+</resources>

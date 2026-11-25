@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NaoDeNemAgua" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/fundo_escuro</item>
+        <item name="android:colorAccent">@color/folha</item>
+        <item name="android:windowSplashScreenBackground">@color/fundo_escuro</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/folha</item>
+    </style>
+</resources>

@@ -1,0 +1,53 @@
+
+> naodenemagua-marco-04@1.0.0 teste:persistencia
+> node scripts/teste-persistencia.js
+
+
+Teste de integracao da persistencia (TimescaleDB)
+  banco naodenemagua_teste limpo e com o cadastro de persistencia/seed.sql (vaso-01 = jiboia)
+  ok    servico sobe com o banco e informa que nao havia estado salvo
+  ok    perfil do vaso carregado do cadastro (jiboia, sala)
+1. Gravacao -- historico nas hypertables
+  ok    servico emite a dose de fertilizante (EC 500 < 800)
+  ok    servico emite PULSO_IRRIGACAO com o solo a 20%
+  ok    sem efeito confirmado, a irrigacao automatica e bloqueada
+  ok    telemetria de solo gravada (inclui EC e temperatura do substrato)
+  ok    eventId repetido gravado uma unica vez
+  ok    telemetria dos dois reservatorios gravada
+  ok    comando de irrigacao e de adubo gravados
+  ok    ack EXECUTADO gravado e ligado ao comando pelo command_id
+  ok    alertas SOLO_SECO e FALHA_IRRIGACAO gravados
+  ok    transicoes gravadas (solo AUTORIZADO, adubacao VERIFICANDO, verificacao BLOQUEADA)
+  ok    agregado continuo solo_1min responde (time_bucket)
+2. Preservacao -- SIGKILL no servico e nova partida
+  ok    snapshot salvo com 1 dose, bloqueio e eventIds
+  ok    na nova partida o estado e restaurado do banco
+  ok    irrigacao continua bloqueada depois do reinicio
+  ok    a dose aplicada antes do reinicio continua contando
+  ok    eventId visto ANTES do reinicio continua DUPLICADO
+  ok    solo seco apos o reinicio NAO gera pulso (bloqueio preservado)
+  ok    EC baixa de novo: limite de doses impede segunda dose (doses preservadas)
+  ok    contador de comandos continua de onde parou (sem reusar idempotencyKey)
+3. Falha do banco -- servico continua, fila despejada na volta
+  ok    servico percebe a queda do banco
+  ok    servico continua processando telemetria sem o banco
+  ok    servico continua vivo (nao caiu junto com o banco)
+  ok    na volta do banco a fila e despejada
+  ok    leituras recebidas durante a queda estao no banco
+4. Reinicio do conteiner -- dados preservados no volume
+  ok    linhas gravadas antes da parada continuam la
+  ok    cadastro continua la
+5. Perfil por especie e por vaso -- sem reiniciar o servico
+  ok    jiboia (liga < 30%): solo a 40% fica NORMAL
+  ok    troca para samambaia aplicada: limiarLiga 30 -> 45 (especie:samambaia)
+  ok    samambaia: o mesmo solo a 40% passa a AUTORIZADO
+  ok    parametro do VASO vence o da especie: limiarLiga 45 -> 35 (vaso:vaso-01)
+  ok    com liga < 35%, solo a 40% volta a NORMAL
+  ok    troca de perfil registrada em transicoes
+  ok    perfil invalido no cadastro e ignorado (schema), sem derrubar o servico
+6. Menor privilegio no banco
+  ok    leitor_app consegue ler o historico
+  ok    leitor_app NAO consegue gravar (42501 permissao negada)
+
+37 verificacoes aprovadas, 0 falhas
+saida=0

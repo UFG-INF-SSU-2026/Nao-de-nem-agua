@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Marca (as mesmas de ui/theme/Color.kt) -->
+    <color name="folha">#FF1F8A70</color>
+    <color name="folha_escura">#FF0F5F73</color>
+    <color name="fundo_claro">#FFF4F8F3</color>
+    <color name="fundo_escuro">#FF0D1A16</color>
+</resources>

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/solicitacao-app",
+  "title": "SolicitacaoApp v1",
+  "description": "Marco 4: pedido do aplicativo ao servico, em naodenemagua/v1/vaso/{vasoId}/app/solicitacao (QoS 1, retain false). O app NAO comanda atuador: ele pede, e o servico decide. A resposta sai em app/resposta como RespostaApp, correlacionada pelo requestId.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventType", "requestId", "deviceId", "entityId", "action", "createdAt", "ttlMs"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "SolicitacaoApp" },
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_:.-]{8,64}$",
+      "description": "Gerado pelo app (UUID, por exemplo). Chave de idempotencia: repetir o mesmo requestId nao repete o efeito."
+    },
+    "deviceId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identidade do app no broker (ex.: app-vaso-01). O broker confere que e a mesma da conexao autenticada."
+    },
+    "entityId": { "type": "string", "minLength": 1, "description": "Vaso a que o pedido se refere; deve ser o vaso do topico." },
+    "action": {
+      "enum": ["RECONHECER_FALHA"],
+      "description": "RECONHECER_FALHA: o usuario viu o alerta FALHA_IRRIGACAO/FALHA_ADUBACAO e libera as regras bloqueadas (o mesmo que a tecla r do servico)."
+    },
+    "createdAt": { "type": "string", "format": "utc-date-time", "description": "Relogio do celular (UTC). Junto com ttlMs define ate quando o pedido vale." },
+    "ttlMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 120000,
+      "description": "Um pedido que chega depois de createdAt + ttlMs e recusado (REJEITADA_EXPIRADA): o usuario ja pode ter desistido."
+    }
+  }
+}

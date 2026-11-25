@@ -78,6 +78,28 @@ class VerificacaoIrrigacao {
     this.diagnostico = null;
   }
 
+  /*
+   * Marco 4 -- persistencia. O BLOQUEIO sobrevive ao reinicio (relogio de
+   * parede): reiniciar o servico nao pode ser um jeito de religar uma bomba
+   * que nao bombeia. Uma verificacao EM CURSO nao: as leituras do intervalo
+   * em que o servico esteve fora se perderam, e julgar o efeito sem elas daria
+   * um diagnostico falso.
+   */
+  exportar() {
+    return { bloqueadaDesde: this.bloqueadaDesde, diagnostico: this.diagnostico, emCurso: this.emCurso };
+  }
+
+  restaurar(s) {
+    if (!s) return [];
+    const notas = [];
+    this.bloqueadaDesde = s.bloqueadaDesde ?? null;
+    this.diagnostico = s.diagnostico ?? null;
+    this.emCurso = null;
+    if (this.bloqueadaDesde !== null) notas.push(`irrigacao continua bloqueada (${this.diagnostico})`);
+    if (s.emCurso) notas.push(`verificacao de ${s.emCurso.commandId} descartada (interrompida pelo reinicio)`);
+    return notas;
+  }
+
   resumo() {
     return { emCurso: this.emCurso, bloqueada: this.bloqueadaDesde !== null, diagnostico: this.diagnostico };
   }

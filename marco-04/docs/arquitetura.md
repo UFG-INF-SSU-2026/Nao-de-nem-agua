@@ -6,6 +6,14 @@
 > físicas locais no dispositivo (`REJEITADO_SEGURANCA`). A divisão é a da seção
 > 4: o que é **desejável** decide a nuvem; o que é **perigoso** o dispositivo
 > impede sozinho. Ver [`marco-04.md`](marco-04.md).
+>
+> **Marco 4 — aplicativo.** O app Android **foi entregue** como previsto nesta
+> arquitetura: mais um cliente do broker (estado retido, alertas, pedido de
+> reconhecimento) e um **segundo produtor** (luz do sensor do celular, regra R5),
+> mais uma API HTTPS somente leitura para o histórico. Diagrama e distribuição
+> atualizados em [`diagramas/componentes.md`](diagramas/componentes.md); detalhes em
+> [`aplicativo.md`](aplicativo.md). As menções ao app como “previsto” abaixo são
+> o registro histórico da decisão.
 
 O Marco 3 preserva a fronteira descrita abaixo e acrescenta o serviço como
 produtor de `AlertaCuidado`, consumido pelo notificador independente via MQTT.
@@ -358,13 +366,13 @@ fronteira continua íntegra.
    que restam.
 4. **Um vaso apenas.** O contrato prevê `vasoId` no tópico, mas o serviço mantém
    estado de um vaso só.
-5. **Estado em memória.** Reiniciar o serviço perde o estado corrente; apenas o
-   `eventos.jsonl` sobrevive.
+5. ~~**Estado em memória.**~~ **Resolvido no Marco 4:** histórico em TimescaleDB
+   e estado das regras restaurado na partida. Ver [`persistencia.md`](persistencia.md).
 6. **O LED representa a bomba.** Não há água nem realimentação física.
 7. **Alexa, tomadas inteligentes e aplicativo** permanecem fora deste marco.
-8. **O Android é evolução prevista, não entrega.** A arquitetura foi escolhida
-   para acomodá-lo como segundo assinante, e `scripts/observador.js` ocupa hoje
-   esse lugar — mas o aplicativo não existe.
+8. ~~**O Android é evolução prevista, não entrega.**~~ **Resolvido no Marco 4:**
+   o app entrou como segundo assinante e segundo produtor, sem mudar o produtor
+   original. Ver [`aplicativo.md`](aplicativo.md).
 
 ---
 

@@ -45,7 +45,14 @@ const AMBIENTE = {
   ADUBACAO_TIMEOUT_MEDICAO_MS: '10000',
   ADUBACAO_JANELA_VERIFICACAO_MS: '8000',
   ADUBACAO_JANELA_DOSES_MS: '120000',
-  ADUBACAO_PULSO_MS: '2000'
+  ADUBACAO_PULSO_MS: '2000',
+  APP_ESTADO_INTERVALO_MS: '2000',
+  LUZ_AMOSTRAS_MEDIA: '2',
+  LUZ_TEMPO_MINIMO_MS: '3000',
+  LUZ_VALIDADE_MS: '6000',
+  // Marco 4: este teste cobre a fronteira e as regras, em memoria; a
+  // persistencia tem o proprio teste (npm run teste:persistencia).
+  PERSISTENCIA_HABILITADA: '0'
 };
 
 // O teste assume a identidade do gateway simulado: mesma senha, mesma ACL,
@@ -999,6 +1006,224 @@ async function secaoMarco4(comandante) {
       await aguardar(() => pulsos(mb).length >= 1, 15000));
     verificar('notificador apresenta os alertas novos', /RESERVATORIO CRITICO/.test(saidaNotificador) && /FALHA IRRIGACAO/.test(saidaNotificador));
     sim('m');
+  }
+
+  // -------------------------------------------------------------------------
+  console.log('19. Marco 4 -- aplicativo: identidade propria, estado retido, reconhecimento de falha');
+  // -------------------------------------------------------------------------
+  {
+    const TA = {
+      estado: `${PREFIXO}/state/vaso`,
+      solicitacao: `${PREFIXO}/app/solicitacao`,
+      resposta: `${PREFIXO}/app/resposta`
+    };
+    const url = AMBIENTE.MQTT_URL;
+
+    // O teste faz o papel do app Android: mesma identidade, mesma ACL.
+    const conexaoApp = await tentarConectar(url, opcoesDe('app-vaso-01'));
+    verificar('app conecta com TLS + usuario/senha proprios (app-vaso-01)', conexaoApp.conectou, conexaoApp.erro);
+    const app = conexaoApp.cliente;
+    conexoes.push(app);
+    const estados = [];
+    const respostas = [];
+    app.on('message', (t, b, pk) => {
+      try {
+        const p = JSON.parse(b.toString());
+        if (t === TA.estado) estados.push({ p, retain: pk.retain, em: Date.now() });
+        if (t === TA.resposta) respostas.push(p);
+      } catch { /* ignora */ }
+    });
+    // SUBACK: 128 = assinatura negada pela ACL.
+    const assinar = (filtro) => new Promise((r) => app.subscribe(filtro, { qos: 1 }, (e, g) => r(e ? 128 : g[0].qos)));
+
+    const qosEstado = await assinar(TA.estado);
+    const qosAlertas = await assinar(`${PREFIXO}/alert/#`);
+    const qosResposta = await assinar(TA.resposta);
+    verificar('app assina estado, alertas e respostas do proprio vaso',
+      qosEstado !== 128 && qosAlertas !== 128 && qosResposta !== 128, `SUBACK ${qosEstado}/${qosAlertas}/${qosResposta}`);
+    verificar('ao assinar, o app recebe o EstadoVaso RETIDO na hora, dentro do contrato',
+      await aguardar(() => estados.some((e) => e.retain), 2000) && contrato.validar('EstadoVaso', estados[0].p).ok,
+      estados.length ? JSON.stringify(contrato.validar('EstadoVaso', estados[0].p)) : 'nada recebido');
+    const n0 = estados.length;
+    await esperar(Number(AMBIENTE.APP_ESTADO_INTERVALO_MS) + 1000);
+    verificar('sem mudanca, o estado e republicado no pulso (o app distingue "parado" de "sem novidade")',
+      estados.length > n0, `${estados.length - n0} publicacao(oes)`);
+    verificar('app NAO pode assinar comandos (ACL)', (await assinar(`${PREFIXO}/command/#`)) === 128);
+    verificar('app NAO pode assinar o estado de outro vaso (ACL)',
+      (await assinar('naodenemagua/v1/vaso/vaso-02/state/vaso')) === 128);
+
+    // Publicacoes proibidas: cada tentativa usa uma conexao propria, porque o
+    // broker derruba quem publica onde nao pode.
+    const publicarProibido = async (identidade, topico, payload) => {
+      const c = (await tentarConectar(url, opcoesDe(identidade))).cliente;
+      const caiu = new Promise((r) => c.once('close', () => r(true)));
+      c.publish(topico, JSON.stringify(payload), { qos: 1 });
+      const r = await Promise.race([caiu, esperar(3000).then(() => false)]);
+      c.end(true);
+      return r;
+    };
+    verificar('app tentando publicar COMANDO: broker nega e derruba a conexao',
+      await publicarProibido('app-vaso-01', T.comando, { deviceId: 'app-vaso-01', action: 'PULSO_IRRIGACAO' }) &&
+        /PUBLISH_NEGADO.*app-vaso-01.*command\/irrigacao/.test(saidaBroker));
+
+    let nReq = 0;
+    const pedido = (extra) => ({
+      schemaVersion: 1, eventType: 'SolicitacaoApp', requestId: `req-teste-${BOOT_ID}-${++nReq}`,
+      deviceId: 'app-vaso-01', entityId: 'vaso-01', action: 'RECONHECER_FALHA',
+      createdAt: new Date().toISOString(), ttlMs: 30000, ...(extra || {})
+    });
+    verificar('app NAO fala em nome de outro: deviceId falsificado no pedido -> broker nega',
+      await publicarProibido('app-vaso-01', TA.solicitacao, pedido({ deviceId: 'sim-vaso-01' })) &&
+        /deviceId do payload \(sim-vaso-01\) != identidade \(app-vaso-01\)/.test(saidaBroker));
+    verificar('gateway NAO pode fazer pedido de app (ACL)',
+      await publicarProibido('sim-vaso-01', TA.solicitacao, pedido({ deviceId: 'sim-vaso-01' })));
+
+    const solicitar = async (p) => {
+      const antes = respostas.filter((x) => x.requestId === p.requestId).length;
+      await new Promise((r) => app.publish(TA.solicitacao, JSON.stringify(p), { qos: 1 }, r));
+      await aguardar(() => respostas.filter((x) => x.requestId === p.requestId).length > antes, 3000);
+      return respostas.filter((x) => x.requestId === p.requestId).pop() || null;
+    };
+    const ultimoEstado = () => (estados.length ? estados[estados.length - 1].p : null);
+
+    // Sem falha pendente: pedido valido, nada a fazer.
+    await aguardar(() => ultimoEstado() && ultimoEstado().falhaPendente === false, 10000);
+    let r = await solicitar(pedido());
+    verificar('sem falha pendente: NADA_A_RECONHECER', r && r.result === 'NADA_A_RECONHECER', r && r.result);
+
+    r = await solicitar(pedido({ createdAt: new Date(Date.now() - 60000).toISOString() }));
+    verificar('pedido velho (createdAt + ttl ja passou): REJEITADA_EXPIRADA', r && r.result === 'REJEITADA_EXPIRADA', r && r.result);
+    r = await solicitar(pedido({ createdAt: new Date(Date.now() + 120000).toISOString() }));
+    verificar('relogio do celular adiantado demais: REJEITADA_EXPIRADA', r && r.result === 'REJEITADA_EXPIRADA', r && r.result);
+    r = await solicitar(pedido({ action: 'LIGAR_BOMBA' }));
+    verificar('acao fora do contrato (LIGAR_BOMBA): REJEITADA_CONTRATO, sem atuar', r && r.result === 'REJEITADA_CONTRATO', r && r.result);
+
+    // Falha real: bomba sem fluxo -> FALHA_IRRIGACAO -> irrigacao bloqueada.
+    const m = Date.now();
+    sim('fs');
+    const falhou = await aguardar(() => alertasDesde(m, 'FALHA_IRRIGACAO').length >= 1, 20000);
+    const emAlerta = Date.now();
+    verificar('bomba sem fluxo de novo: alerta FALHA_IRRIGACAO chega ao app', falhou);
+    verificar('estado retido mostra falhaPendente (IRRIGACAO) e irrigacao bloqueada',
+      await aguardar(() => ultimoEstado() && ultimoEstado().falhaPendente === true && ultimoEstado().irrigacao.bloqueada === true &&
+        JSON.stringify(ultimoEstado().falhasPendentes) === '["IRRIGACAO"]', 3000),
+      JSON.stringify(ultimoEstado() && { f: ultimoEstado().falhaPendente, i: ultimoEstado().irrigacao }));
+    sim('f'); // o usuario "consertou" a bomba
+
+    const mp = Date.now();
+    const reconhecer = pedido();
+    r = await solicitar(reconhecer);
+    verificar('app reconhece a falha: EXECUTADA, irrigacao liberada',
+      r && r.result === 'EXECUTADA' && r.liberou && r.liberou.irrigacao === true, r && JSON.stringify(r));
+    const voltou = await aguardar(() => pulsos(mp).length >= 1, 5000);
+    verificar('irrigacao volta logo apos o reconhecimento (antes do bloqueio vencer sozinho)',
+      voltou && Date.now() - emAlerta < Number(AMBIENTE.VERIFICACAO_BLOQUEIO_MS), `${Date.now() - emAlerta}ms depois do alerta`);
+    verificar('estado retido volta a falhaPendente=false',
+      await aguardar(() => ultimoEstado() && ultimoEstado().falhaPendente === false, 3000));
+
+    const pulsosAntes = pulsos(mp).length;
+    r = await solicitar(reconhecer);
+    verificar('retry do mesmo requestId: IGNORADA_DUPLICADA, com o resultado original',
+      r && r.result === 'IGNORADA_DUPLICADA' && /EXECUTADA/.test(r.detail), r && JSON.stringify(r));
+    await esperar(500);
+    verificar('o retry nao repete o efeito', pulsos(mp).length === pulsosAntes);
+    verificar('toda RespostaApp publicada respeita o contrato',
+      respostas.length > 0 && respostas.every((x) => contrato.validar('RespostaApp', x).ok));
+    sim('m');
+    app.end(true);
+  }
+
+  // -------------------------------------------------------------------------
+  console.log('20. Marco 4 -- R5: o app como produtor (sensor de luz do celular)');
+  // -------------------------------------------------------------------------
+  {
+    const TL = `${PREFIXO}/telemetry/light`;
+    const url = AMBIENTE.MQTT_URL;
+    const app = (await tentarConectar(url, opcoesDe('app-vaso-01'))).cliente;
+    conexoes.push(app);
+    const estados = [];
+    app.on('message', (t, b) => {
+      try { if (t === `${PREFIXO}/state/vaso`) estados.push(JSON.parse(b.toString())); } catch { /* ignora */ }
+    });
+    await new Promise((r) => app.subscribe(`${PREFIXO}/state/vaso`, { qos: 1 }, r));
+    const luzAtual = () => (estados.length ? estados[estados.length - 1].luz : null);
+
+    const sessao = crypto.randomBytes(2).toString('hex');
+    let seqLuz = 0;
+    const leituraLuz = (lux, extra) => ({
+      schemaVersion: 1, eventId: `app-vaso-01:${sessao}:${++seqLuz}`, eventType: 'LeituraLuz',
+      deviceId: 'app-vaso-01', entityId: 'vaso-01', sequence: seqLuz, measuredAt: new Date().toISOString(),
+      lux, samples: 3, windowMs: 500, sensor: 'teste', valid: true, ...(extra || {})
+    });
+    // A saida do servico tem cores ANSI entre o rotulo e a mensagem.
+    const saidaSemCor = (desde) => saidaServico.slice(desde).replace(/\x1b\[[0-9;]*m/g, '');
+    const publicarLuz = (p) => new Promise((r) => app.publish(TL, JSON.stringify(p), { qos: 1 }, r));
+    // Publica a mesma luz a cada 500 ms por `ms` milissegundos.
+    const manter = async (lux, ms) => {
+      const fim = Date.now() + ms;
+      while (Date.now() < fim) { await publicarLuz(leituraLuz(lux)); await esperar(500); }
+    };
+
+    await manter(2000, 1500);
+    verificar('leituras do celular chegam ao servico: luz ADEQUADA no estado retido',
+      await aguardar(() => luzAtual() && luzAtual().estado === 'ADEQUADA' && luzAtual().luxMedia === 2000, 4000),
+      JSON.stringify(luzAtual()));
+
+    // Mao sobre o sensor por ~1,5 s: menos que o tempo minimo (3 s).
+    const m1 = Date.now();
+    await manter(5, 1500);
+    await manter(2000, 4000);
+    verificar('sombra momentanea (menor que o tempo minimo) NAO gera alerta',
+      alertasDesde(m1, 'LUZ_INSUFICIENTE').length === 0 && luzAtual().estado === 'ADEQUADA');
+
+    const m2 = Date.now();
+    await manter(5, 5000);
+    verificar('pouca luz SUSTENTADA: LUZ_INSUFICIENTE e estado POUCA_LUZ',
+      await aguardar(() => alertasDesde(m2, 'LUZ_INSUFICIENTE').length === 1, 3000) &&
+        await aguardar(() => luzAtual() && luzAtual().estado === 'POUCA_LUZ', 3000));
+
+    const m3 = Date.now();
+    await manter(2000, 5000);
+    verificar('luz volta e se mantem: LUZ_NORMALIZADA',
+      await aguardar(() => alertasDesde(m3, 'LUZ_NORMALIZADA').length === 1, 3000));
+
+    const m4 = Date.now();
+    await manter(60000, 5000);
+    verificar('sol direto sustentado: LUZ_EXCESSIVA',
+      await aguardar(() => alertasDesde(m4, 'LUZ_EXCESSIVA').length === 1, 3000));
+
+    const antesInvalida = saidaServico.length;
+    await publicarLuz(leituraLuz(-5));
+    await esperar(400);
+    verificar('lux fora da faixa fisica (-5): rejeitado pelo contrato, servico vivo',
+      /LeituraLuz SCHEMA_INVALIDO/.test(saidaServico.slice(antesInvalida)));
+
+    const antesAtrasada = saidaServico.length;
+    await publicarLuz(leituraLuz(5, { measuredAt: new Date(Date.now() - 60000).toISOString() }));
+    await esperar(400);
+    verificar('leitura medida ha 60 s (atrasada): arquivada como historico, nao decide',
+      /HISTORICO\s+LeituraLuz .* chegou \d+ms depois de medida/.test(saidaSemCor(antesAtrasada)));
+
+    const repetida = leituraLuz(60000);
+    await publicarLuz(repetida);
+    const antesDup = saidaServico.length;
+    await publicarLuz(repetida);
+    await esperar(400);
+    verificar('a mesma LeituraLuz duas vezes (QoS 1): a segunda e descartada',
+      new RegExp(`DUPLICADO\\s+${repetida.eventId}`).test(saidaSemCor(antesDup)));
+
+    verificar('celular para de medir: depois da validade, SEM_MEDICAO',
+      await aguardar(() => luzAtual() && luzAtual().estado === 'SEM_MEDICAO', Number(AMBIENTE.LUZ_VALIDADE_MS) + 4000),
+      JSON.stringify(luzAtual()));
+
+    // So o papel app publica luz: o gateway, nao.
+    const g = (await tentarConectar(url, opcoesDe('sim-vaso-01'))).cliente;
+    const caiu = new Promise((r) => g.once('close', () => r(true)));
+    g.publish(TL, JSON.stringify(leituraLuz(1000, { deviceId: 'sim-vaso-01' })), { qos: 1 });
+    verificar('gateway NAO publica LeituraLuz (ACL): broker derruba',
+      await Promise.race([caiu, esperar(3000).then(() => false)]));
+    g.end(true);
+    app.end(true);
   }
   olho.end(true);
 }

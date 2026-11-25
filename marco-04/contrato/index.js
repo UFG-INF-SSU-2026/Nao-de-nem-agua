@@ -61,14 +61,37 @@ function carregarConfig() {
    * SECAO_CHAVE em maiusculas, por exemplo AMBIENTE_UMIDADE_AR_MIN=55 ou
    * ADUBACAO_JANELA_DOSES_MS=5000.
    */
-  for (const secao of ['ambiente', 'reservatorios', 'verificacao', 'adubacao']) {
+  cfg.app = { estadoIntervaloMs: 5000, toleranciaRelogioMs: 30000, ...(cfg.app || {}) };
+  cfg.luz = { luxMin: 300, luxMax: 20000, histerese: 0.2, amostrasMedia: 3, tempoMinimoMs: 15000, validadeMs: 30000, ...(cfg.luz || {}) };
+  cfg.api = { porta: 8443, horasMax: 168, limiteAlertas: 100, tentativasMax: 10, janelaTentativasMs: 60000, ...(cfg.api || {}) };
+  for (const secao of ['ambiente', 'reservatorios', 'verificacao', 'adubacao', 'persistencia', 'app', 'luz', 'api']) {
     cfg[secao] = { ...(cfg[secao] || {}) };
     for (const chave of Object.keys(cfg[secao])) {
       if (chave.startsWith('_')) continue;
       const nomeEnv = `${secao}_${chave.replace(/([A-Z])/g, '_$1')}`.toUpperCase();
-      if (env[nomeEnv] !== undefined) cfg[secao][chave] = Number(env[nomeEnv]);
+      if (env[nomeEnv] === undefined) continue;
+      const atual = cfg[secao][chave];
+      cfg[secao][chave] = typeof atual === 'number' ? Number(env[nomeEnv]) : env[nomeEnv];
     }
   }
+
+  /*
+   * Marco 4: o perfil de cuidado do vaso (persistencia/perfil.js) pode trocar
+   * limiares vindos do banco, mas a variavel de ambiente continua vencendo --
+   * a "alteracao ao vivo" do README nao pode ser desfeita pelo cadastro. Por
+   * isso fica registrado (nao enumeravel) quais chaves vieram do ambiente.
+   */
+  const sobrescritas = {};
+  for (const [chaveEnv, chaveCfg] of Object.entries(mapaRegra)) {
+    if (env[chaveEnv] !== undefined) sobrescritas[`regra.${chaveCfg}`] = cfg.regra[chaveCfg];
+  }
+  for (const secao of ['ambiente', 'adubacao']) {
+    for (const chave of Object.keys(cfg[secao])) {
+      const nomeEnv = `${secao}_${chave.replace(/([A-Z])/g, '_$1')}`.toUpperCase();
+      if (env[nomeEnv] !== undefined) sobrescritas[`${secao}.${chave}`] = cfg[secao][chave];
+    }
+  }
+  Object.defineProperty(cfg, 'sobrescritasAmbiente', { value: sobrescritas, enumerable: false });
   return cfg;
 }
 
@@ -130,6 +153,13 @@ function topicos(cfg) {
     telemetriaReservatorio: `${base}/telemetry/reservoir`,
     comandoAtuador: `${base}/command/atuador`,
     ackAtuador: `${base}/ack/atuador`,
+    // Marco 4: aplicativo. state/vaso e RETIDO (o app ve o estado ao abrir);
+    // app/solicitacao e o unico topico em que o app publica.
+    estadoVaso: `${base}/state/vaso`,
+    solicitacaoApp: `${base}/app/solicitacao`,
+    respostaApp: `${base}/app/resposta`,
+    // Marco 4: luz medida pelo celular (produtor: o app).
+    telemetriaLuz: `${base}/telemetry/light`,
     // Curinga usado pelo servico: um assinante novo (por exemplo o app Android
     // previsto como evolucao) assina exatamente o mesmo padrao, sem que
     // produtor ou servico precisem mudar.
@@ -150,7 +180,16 @@ const ARQUIVOS_SCHEMA = {
   // Marco 4
   LeituraAmbiente: 'telemetria-ambiente.schema.json',
   NivelReservatorio: 'nivel-reservatorio.schema.json',
-  ComandoAtuador: 'comando-atuador.schema.json'
+  ComandoAtuador: 'comando-atuador.schema.json',
+  // Marco 4: aplicativo -- estado corrente (retido), pedido e resposta
+  EstadoVaso: 'estado-vaso.schema.json',
+  SolicitacaoApp: 'solicitacao-app.schema.json',
+  RespostaApp: 'resposta-app.schema.json',
+  // Marco 4: sensor de luz do celular (o app como produtor)
+  LeituraLuz: 'telemetria-luz.schema.json',
+  // Marco 4: respostas da API de historico (HTTPS, somente leitura)
+  HistoricoVaso: 'historico-vaso.schema.json',
+  HistoricoAlertas: 'historico-alertas.schema.json'
 };
 
 const ajv = new Ajv({ allErrors: true, strict: false });

@@ -8,8 +8,9 @@ const LIMITE = 500;
 // A confirmação fica junto do comando: retries não repetem efeitos e a ordem
 // de chegada dos acks não determina a ação original.
 class AlertasCuidado {
-  constructor(cliente, cfg, log) {
+  constructor(cliente, cfg, log, persistencia) {
     this.cliente = cliente;
+    this.persistencia = persistencia || null; // Marco 4: historico de alertas
     this.cfg = cfg;
     this.log = log;
     this.executionId = randomUUID();
@@ -36,6 +37,12 @@ class AlertasCuidado {
       return;
     }
     this.log.registrar('ALERTA', `${alerta.eventId} ${alertType} ${severity} origem=${correlationId}`, alerta);
+    if (this.persistencia) {
+      this.persistencia.gravar('alertas', {
+        event_id: alerta.eventId, tipo: alertType, severidade: severity,
+        mensagem: message, correlation_id: correlationId || null
+      });
+    }
     this.cliente.publish(contrato.topicos(this.cfg).alertaCuidado, JSON.stringify(alerta),
       { qos: 1, retain: false }, erro => {
         if (erro) this.log.registrar('REJEITADO', `falha de transporte do alerta: ${erro.message}`, alerta);

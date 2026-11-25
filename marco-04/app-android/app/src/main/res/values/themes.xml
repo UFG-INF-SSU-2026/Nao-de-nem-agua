@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A janela ja nasce com o fundo da marca: sem "piscar" branco antes do Compose. -->
+    <style name="Theme.NaoDeNemAgua" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/fundo_claro</item>
+        <item name="android:colorAccent">@color/folha</item>
+    </style>
+</resources>

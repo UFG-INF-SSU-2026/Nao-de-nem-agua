@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Fundo do icone adaptativo: degrade folha -> agua, com ondulacoes sutis
+  (a gota caindo na agua). Cores da marca em ui/theme/Color.kt.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="10"
+                android:startY="4"
+                android:endX="98"
+                android:endY="104">
+                <item android:offset="0.0" android:color="#FF46B37A" />
+                <item android:offset="0.55" android:color="#FF1F8A70" />
+                <item android:offset="1.0" android:color="#FF0F5F73" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- ondulacoes -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1FFFFFFF"
+        android:strokeWidth="1.6"
+        android:pathData="M24,92a30,9 0,1 0,60 0a30,9 0,1 0,-60 0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#14FFFFFF"
+        android:strokeWidth="1.4"
+        android:pathData="M10,94a44,13 0,1 0,88 0a44,13 0,1 0,-88 0" />
+    <!-- brilho suave no canto superior -->
+    <path
+        android:fillColor="#12FFFFFF"
+        android:pathData="M0,0h70C50,18 22,30 0,34z" />
+</vector>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icone tematico (Android 13+): so o contorno da gota e o broto; a cor vem do sistema. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3.4"
+        android:pathData="M54,25C54,25 35.5,46.5 35.5,62C35.5,72.2 43.8,80.5 54,80.5C64.2,80.5 72.5,72.2 72.5,62C72.5,46.5 54,25 54,25Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="3"
+        android:pathData="M54,73L54,58M46.5,75C49.5,73 58.5,73 61.5,75" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,65C47,65 43,60.5 43,53C49.5,53 54,57.5 54,65ZM54,60C54,52 58.5,47 65,47C65,54 60.5,60 54,60Z" />
+</vector>

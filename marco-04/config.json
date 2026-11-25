@@ -37,11 +37,46 @@
     "intervaloAmbienteMs": 2000,
     "intervaloNivelMs": 1500
   },
+  "persistencia": {
+    "_comment": "Marco 4: TimescaleDB (docker compose). A senha NAO fica aqui: vem de PERSISTENCIA_SENHA_SERVICO (arquivo .env, gerado por `npm run seguranca`). habilitada=0 (PERSISTENCIA_HABILITADA=0) roda tudo em memoria, como no Marco 3. Com o banco fora do ar o servico continua decidindo e enfileira ate filaMax gravacoes. O estado das regras e salvo a cada intervaloSnapshotMs e restaurado na partida; o perfil de cuidado do vaso e relido a cada intervaloPerfilMs.",
+    "habilitada": 1,
+    "host": "127.0.0.1",
+    "porta": 5432,
+    "banco": "naodenemagua",
+    "usuario": "servico_irrigacao",
+    "filaMax": 10000,
+    "intervaloSnapshotMs": 2000,
+    "intervaloPerfilMs": 15000,
+    "esperaPartidaMs": 4000,
+    "retencaoDias": 30
+  },
   "log": {
     "arquivoJsonl": "consumidor-servico/eventos.jsonl"
   },
   "alertas": {
     "ttlMs": 60000
+  },
+  "luz": {
+    "_comment": "Marco 4, R5: luz no lugar do vaso, medida pelo sensor do celular (LeituraLuz). Media movel de amostrasMedia leituras; POUCA_LUZ abaixo de luxMin, LUZ_EXCESSIVA acima de luxMax, saindo da faixa so depois da margem histerese (fracao do limiar). A faixa nova so vale depois de sustentada por tempoMinimoMs (curto aqui para a demonstracao; horas em producao). Sem leitura por validadeMs, SEM_MEDICAO. Valores para jiboia (meia-sombra, luz indireta).",
+    "luxMin": 300,
+    "luxMax": 20000,
+    "histerese": 0.2,
+    "amostrasMedia": 3,
+    "tempoMinimoMs": 15000,
+    "validadeMs": 30000
+  },
+  "api": {
+    "_comment": "Marco 4: API de historico para o app (api-historico/). HTTPS com certificado proprio da CA do grupo, usuario/senha da identidade do app (mesmos hashes do broker), somente leitura no banco (papel leitor_app). horasMax limita o periodo; tentativasMax falhas de senha por janelaTentativasMs por IP -> 429.",
+    "porta": 8443,
+    "horasMax": 168,
+    "limiteAlertas": 100,
+    "tentativasMax": 10,
+    "janelaTentativasMs": 60000
+  },
+  "app": {
+    "_comment": "Marco 4: aplicativo Android. O servico publica o EstadoVaso RETIDO em state/vaso a cada mudanca e, sem mudanca, a cada estadoIntervaloMs (o app conclui que o servico parou depois de ~3x esse tempo). Uma SolicitacaoApp com createdAt mais de toleranciaRelogioMs no futuro e recusada: relogio do celular adiantado demais nao pode esticar o prazo do pedido.",
+    "estadoIntervaloMs": 5000,
+    "toleranciaRelogioMs": 30000
   },
 
   "ambiente": {

@@ -6,7 +6,8 @@
     "esp32-vaso-01":     { "papel": "gateway", "deviceId": "esp32-vaso-01", "vasoId": "vaso-01" },
     "servico-irrigacao": { "papel": "servico" },
     "notificador":       { "papel": "notificador" },
-    "observador":        { "papel": "observador" }
+    "observador":        { "papel": "observador" },
+    "app-vaso-01":       { "papel": "app", "deviceId": "app-vaso-01", "vasoId": "vaso-01" }
   },
 
   "papeis": {
@@ -31,12 +32,15 @@
       "publica": [
         "{prefixo}/vaso/+/command/irrigacao",
         "{prefixo}/vaso/+/command/atuador",
-        "{prefixo}/vaso/+/alert/#"
+        "{prefixo}/vaso/+/alert/#",
+        "{prefixo}/vaso/+/state/vaso",
+        "{prefixo}/vaso/+/app/resposta"
       ],
       "assina": [
         "{prefixo}/vaso/+/telemetry/#",
         "{prefixo}/vaso/+/status/#",
-        "{prefixo}/vaso/+/ack/#"
+        "{prefixo}/vaso/+/ack/#",
+        "{prefixo}/vaso/+/app/solicitacao"
       ]
     },
     "notificador": {
@@ -52,6 +56,21 @@
       "assina": [
         "{prefixo}/#"
       ]
+    },
+    "app": {
+      "_comment": "Marco 4: aplicativo Android do usuario, amarrado ao PROPRIO vaso. Le o estado corrente (retido), os alertas, a telemetria e o heartbeat, e recebe as respostas as suas solicitacoes. Publica APENAS a SolicitacaoApp e a LeituraLuz do sensor do celular (o app tambem e produtor) -- nunca comando: e o servico que decide se e como atuar. verificarDeviceId: o broker confere que o deviceId do payload e o da identidade autenticada (um app nao fala em nome de outro).",
+      "publica": [
+        "{prefixo}/vaso/{vasoId}/app/solicitacao",
+        "{prefixo}/vaso/{vasoId}/telemetry/light"
+      ],
+      "assina": [
+        "{prefixo}/vaso/{vasoId}/state/vaso",
+        "{prefixo}/vaso/{vasoId}/alert/#",
+        "{prefixo}/vaso/{vasoId}/telemetry/#",
+        "{prefixo}/vaso/{vasoId}/status/#",
+        "{prefixo}/vaso/{vasoId}/app/resposta"
+      ],
+      "verificarDeviceId": true
     }
   }
 }

@@ -8,6 +8,12 @@
 
 ---
 
+> **Entrega atual — Marco 4 (sistema integrado, app Android, persistência,
+> testes, implantação):** [`marco-04/README.md`](marco-04/README.md#entregas-do-marco-4).
+> Marcos anteriores: [`marco-02/`](marco-02), [`marco-03/`](marco-03).
+
+---
+
 ## Parte 1 - Compreensão do problema
 
 **1. Problema e usuários.** 

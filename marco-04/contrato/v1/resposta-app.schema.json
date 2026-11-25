@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/resposta-app",
+  "title": "RespostaApp v1",
+  "description": "Marco 4: resultado de uma SolicitacaoApp, publicado pelo servico em naodenemagua/v1/vaso/{vasoId}/app/resposta (QoS 1, retain false). E o 'resultado da operacao' que o app mostra ao usuario.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventType", "producerId", "entityId", "requestId", "result", "detail", "respondedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "RespostaApp" },
+    "producerId": { "const": "servico-irrigacao" },
+    "entityId": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "action": { "enum": ["RECONHECER_FALHA"], "description": "Ausente apenas quando o pedido nao tinha uma acao reconhecivel (REJEITADA_CONTRATO)." },
+    "result": {
+      "enum": ["EXECUTADA", "NADA_A_RECONHECER", "IGNORADA_DUPLICADA", "REJEITADA_EXPIRADA", "REJEITADA_CONTRATO"],
+      "description": "EXECUTADA: havia regra bloqueada e foi liberada. NADA_A_RECONHECER: o pedido era valido, mas nao havia falha pendente. IGNORADA_DUPLICADA: requestId ja tratado, o efeito nao se repete (detail traz o resultado original). REJEITADA_EXPIRADA: chegou depois de createdAt + ttlMs (ou com relogio adiantado demais). REJEITADA_CONTRATO: payload fora do schema ou de outro vaso."
+    },
+    "detail": { "type": "string" },
+    "liberou": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["irrigacao", "adubacao"],
+      "properties": {
+        "irrigacao": { "type": "boolean" },
+        "adubacao": { "type": "boolean" }
+      },
+      "description": "Presente quando result=EXECUTADA: quais regras estavam bloqueadas e foram liberadas."
+    },
+    "respondedAt": { "type": "string", "format": "utc-date-time" }
+  }
+}

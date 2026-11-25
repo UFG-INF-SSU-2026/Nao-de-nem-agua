@@ -1,4 +1,12 @@
-# Alertas de cuidado — Marco 3
+# Alertas de cuidado — par serviço → notificador (Marco 3, ampliado no Marco 4)
+
+> **Visão geral primeiro:** o que é esse par, por que o notificador é um
+> processo separado e como ele difere do observador estão em
+> [`marco-04.md`, §6](marco-04.md#6-o-segundo-par-produtor-consumidor-serviço--notificador).
+> Este documento é a especificação detalhada: gatilhos, correlação, caches e
+> TTL. No Marco 4 o mesmo fluxo passou a levar 11 tipos novos de alerta
+> (reservatórios, sensores, umidificador, adubação, falha de irrigação), listados
+> no schema e em `marco-04.md`; a tabela abaixo cobre os 6 tipos originais.
 
 O serviço passa a consumir telemetria e confirmações e produzir comandos e
 alertas. O notificador é um assinante independente, somente leitura; aplicativo
@@ -95,7 +103,7 @@ podem ser desativadas com `NO_COLOR=1`.
 
 ## Demonstração e testes no Windows PowerShell
 
-Na pasta `marco-03`, execute `npm install`. Abra quatro terminais nessa pasta:
+Na pasta `marco-04`, execute `npm install` (e, na primeira vez, `npm run seguranca`). Abra quatro terminais nessa pasta:
 
 | Terminal | Comando |
 |---|---|

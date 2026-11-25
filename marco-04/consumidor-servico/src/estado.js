@@ -177,6 +177,51 @@ class EstadoVaso {
     return ESTADOS_DE_FALHA.has(this.estado);
   }
 
+  /*
+   * Marco 4 -- persistencia. O que sobrevive a um reinicio do servico:
+   *   - eventIds vistos: um retry QoS 1 que chega depois do reinicio continua
+   *     sendo DUPLICADO, e nao uma leitura nova;
+   *   - ultimoComandoEm (relogio de parede): o cooldown nao zera no reinicio;
+   *   - pulsoAteMs: o intertravamento com a bomba de adubo;
+   *   - ultimo valor, deviceId e bootId, para diagnostico.
+   * O que NAO sobrevive: a autorizacao. Validade e por tempo, e o dado de antes
+   * do reinicio nao descreve o agora -- o estado volta como DADO_OBSOLETO (ou
+   * DESCONHECIDO, se nunca houve leitura) e a contagem de secas recomeca, a
+   * mesma regra de descontinuidade que aplicarLeitura ja usa.
+   */
+  exportar() {
+    return {
+      deviceId: this.deviceId,
+      bootId: this.bootId,
+      ultimoValor: this.ultimoValor,
+      ultimoEventId: this.ultimoEventId,
+      ultimoEventTimeMs: this.ultimoEventTimeMs,
+      ultimoComandoEm: this.ultimoComandoEm,
+      pulsoAteMs: this.pulsoAteMs || 0,
+      estadoAoSalvar: this.estado,
+      eventIds: this.ordemEventIds.slice()
+    };
+  }
+
+  restaurar(s) {
+    if (!s) return null;
+    this.deviceId = s.deviceId ?? null;
+    this.bootId = s.bootId ?? null;
+    this.ultimoValor = s.ultimoValor ?? null;
+    this.ultimoEventId = s.ultimoEventId ?? null;
+    this.ultimoEventTimeMs = s.ultimoEventTimeMs ?? null;
+    this.ultimoComandoEm = s.ultimoComandoEm ?? null;
+    this.pulsoAteMs = s.pulsoAteMs || 0;
+    this.eventIdsVistos = new Set();
+    this.ordemEventIds = [];
+    for (const id of (s.eventIds || []).slice(-LIMITE_EVENT_IDS)) this.registrarEventId(id);
+    this.recebidoEm = null;
+    this.consecutivasSecas = 0;
+    this.bombaLigada = false;
+    this.estado = this.ultimoValor === null ? ESTADOS.DESCONHECIDO : ESTADOS.DADO_OBSOLETO;
+    return { anterior: s.estadoAoSalvar || null, atual: this.estado, motivo: 'restaurado_apos_reinicio' };
+  }
+
   resumo(agora) {
     return {
       vasoId: this.vasoId,

@@ -1,0 +1,161 @@
+
+> naodenemagua-marco-04@1.0.0 teste
+> node scripts/teste-integracao.js
+
+
+Teste de integracao da fronteira produtor <-> consumidor
+  broker de teste  mqtts://127.0.0.1:64996 (TLS + usuario/senha + ACL)
+  validade=2500ms cooldown=1200ms ttl=2000ms
+
+1. Estado normal -- solo umido nao deve gerar comando
+  ok    nenhum comando com solo a 60%
+2. Decisao -- tres amostras secas consecutivas autorizam a atuacao
+  ok    1a amostra seca ainda NAO comanda (debounce)
+  ok    2a amostra seca ainda NAO comanda (debounce)
+  ok    3a amostra seca gera comando
+  ok    acao e PULSO_IRRIGACAO
+  ok    comando tem identidade unica (commandId)
+  ok    comando tem chave idempotente
+  ok    comando correlaciona com o evento que o originou
+  ok    expiracao expressa no relogio do dispositivo
+  ok    comando chega assinado pelo servico com a chave do dispositivo
+3. Deduplicacao -- o mesmo eventId nao e reprocessado
+  ok    reenvio do mesmo eventId nao gera comando extra
+4. Contrato -- payloads invalidos sao rejeitados sem derrubar o servico
+  ok    nenhum comando a partir de payload invalido
+  ok    servico continua processando apos payloads invalidos
+5. Expiracao de validade -- silencio revoga a autorizacao
+  ok    irrigacao autorizada novamente antes do silencio
+  ok    silencio prolongado gera PARAR_IRRIGACAO sem mensagem nova
+  ok    motivo do parar cita o estado obsoleto
+5b. Retry de comando -- a mesma chave idempotente nao repete o efeito
+  ok    retry responde IGNORADO_DUPLICADO
+  ok    retry NAO responde EXECUTADO
+5c. Comando expirado -- atuacao tardia e recusada
+  ok    comando com prazo vencido responde REJEITADO_EXPIRADO
+6. Evento historico -- replay do buffer offline nao decide
+  ok    tres leituras secas historicas nao geram comando
+7. Will message -- queda abrupta marca o dispositivo como offline
+  ok    conexao encerrada abruptamente (LWT publicado pelo broker)
+8. Alertas de cuidado — serviço produtor e notificador consumidor
+  ok    cada ciclo seco produz somente um SOLO_SECO
+  ok    pulso confirmado gera IRRIGACAO_EXECUTADA
+  ok    parada EXECUTADO nao gera alerta de irrigacao executada
+  ok    validade expirada gera DADO_OBSOLETO
+  ok    LWT real gera DISPOSITIVO_OFFLINE uma vez
+  ok    LWT sem eventId correlaciona com deviceId existente
+  ok    SOLO_SECO correlaciona com terceira leitura
+  ok    alertas MQTT usam QoS 1 e retain false
+  ok    broker recebe alertas QoS 1 sem flag retained
+  ok    OFFLINE repetido e replay invalido nao repetem alerta
+  ok    recuperacao para NORMAL correlaciona leitura
+  ok    acks de pulsos fora de ordem geram duas recusas correlacionadas
+  ok    ack terminal repetido ou IGNORADO_DUPLICADO nao produz execucao
+  ok    IGNORADO_DUPLICADO isolado nao indica nova execucao
+  ok    EXECUTADO original apos retry gera exatamente um alerta
+  ok    notificador descarta eventId duplicado
+  ok    notificador descarta alerta vencido
+  ok    notificador registra JSON malformado
+  ok    notificador registra versao desconhecida
+  ok    notificador registra schema e data impossivel
+  ok    notificador continua vivo e exibe cartao apos lixo
+9. Canal -- so TLS, e so com o broker certo
+  ok    MQTT em texto puro na porta do broker NAO conecta
+  ok    cliente que nao confia na CA propria recusa o broker (anti-MITM)
+10. Identidade -- o broker so aceita quem ele conhece
+  ok    conexao sem usuario/senha e recusada
+  ok    senha errada e recusada
+  ok    usuario inexistente e recusado
+  ok    clientId de outra identidade e recusado
+  ok    identidade valida conecta (controle positivo)
+11. Autorizacao -- cada identidade so faz o que o seu papel permite
+  ok    notificador NAO consegue publicar comando
+  ok    broker derruba quem publica fora da ACL
+  ok    observador (somente leitura) NAO publica
+  ok    gateway NAO assina comandos de outro vaso (SUBACK 0x80)
+  ok    gateway NAO assina comandos de todos os vasos por curinga
+  ok    gateway NAO publica telemetria de outro vaso
+  ok    gateway NAO publica com deviceId de outro dispositivo
+12. Autenticidade (HMAC) -- o servico so decide sobre mensagem assinada
+  ok    leituras secas sem assinatura NAO geram comando
+  ok    leituras adulteradas apos assinar NAO geram comando
+  ok    leituras assinadas com chave errada NAO geram comando
+  ok    as mesmas leituras, assinadas de verdade, geram comando (controle positivo)
+13. Ultima barreira -- o dispositivo recusa comando nao assinado pelo servico
+  ok    comando com assinatura falsa -> REJEITADO_ASSINATURA
+  ok    comando sem assinatura -> REJEITADO_ASSINATURA
+14. Marco 4 -- telemetria nova atravessa a fronteira assinada e no contrato
+  ok    LeituraAmbiente publicada, assinada e dentro do contrato
+  ok    NivelReservatorio de AGUA e de ADUBO, assinados e dentro do contrato
+  ok    LeituraUmidadeSolo traz EC compensada nos campos opcionais da v1
+  ok    eventId unico entre solo, ar e nivel (sequence compartilhado)
+15. R1 -- umidade do ar governa o umidificador por concessao
+  ok    ar seco (35%): servico manda LIGAR o umidificador
+  ok    LIGAR e uma concessao com prazo (durationMs)
+  ok    dispositivo confirma EXECUTADO no topico ack/atuador
+  ok    alerta UMIDIFICADOR_ACIONADO
+  ok    ar umidificado acima de min+histerese: DESLIGAR (umidade_ar_atingiu_alvo)
+  ok    DHT22 em falha: alerta SENSOR_FALHOU
+  ok    DHT22 em falha: umidificador DESLIGADO por seguranca
+  ok    DHT22 de volta: alerta SENSOR_RECUPERADO
+16. R4 -- reservatorio critico bloqueia a bomba no servico E no dispositivo
+  ok    reservatorio de agua a 5%: alerta RESERVATORIO_CRITICO
+  ok    solo seco com reservatorio critico: servico NAO pede irrigacao
+  ok    dispositivo recusa PULSO_IRRIGACAO com reservatorio critico -> REJEITADO_SEGURANCA
+  ok    dispositivo recusa dose de adubo em solo seco -> REJEITADO_SEGURANCA
+  ok    reabastecido: alerta RESERVATORIO_NORMALIZADO
+  ok    com agua de novo, a irrigacao volta
+  ok    R2 verifica o EFEITO: umidade subiu E nivel caiu
+  ok    pulso com efeito NAO gera FALHA_IRRIGACAO
+17. R3 -- adubacao confirmada por medicao, com limite de doses
+  ok    EC baixa so por solo seco: irriga, mede de novo e NAO aduba (falso positivo evitado)
+  ok    EC baixa (500) com solo umido: dose de fertilizante
+  ok    dose e um PULSO com duracao configurada
+  ok    dispositivo executa a dose
+  ok    EC subiu e nivel do adubo caiu: alerta ADUBACAO_EXECUTADA
+  ok    EC baixa de novo dentro da janela: limite de doses segura a segunda dose
+  ok    servico registra limite_de_doses_na_janela
+  ok    EC alta (2500): alerta EXCESSO_NUTRIENTES, sem atuacao
+  ok    dispositivo recusa adubo com a bomba de agua ligada (intertravamento)
+18. R2 -- bomba sem fluxo: validacao cruzada detecta e bloqueia
+  ok    pulso EXECUTADO sem efeito: alerta FALHA_IRRIGACAO (bomba_sem_fluxo)
+  ok    irrigacao automatica bloqueada depois da falha
+  ok    bloqueio expira (sem app para reconhecer) e a irrigacao volta
+  ok    notificador apresenta os alertas novos
+19. Marco 4 -- aplicativo: identidade propria, estado retido, reconhecimento de falha
+  ok    app conecta com TLS + usuario/senha proprios (app-vaso-01)
+  ok    app assina estado, alertas e respostas do proprio vaso
+  ok    ao assinar, o app recebe o EstadoVaso RETIDO na hora, dentro do contrato
+  ok    sem mudanca, o estado e republicado no pulso (o app distingue "parado" de "sem novidade")
+  ok    app NAO pode assinar comandos (ACL)
+  ok    app NAO pode assinar o estado de outro vaso (ACL)
+  ok    app tentando publicar COMANDO: broker nega e derruba a conexao
+  ok    app NAO fala em nome de outro: deviceId falsificado no pedido -> broker nega
+  ok    gateway NAO pode fazer pedido de app (ACL)
+  ok    sem falha pendente: NADA_A_RECONHECER
+  ok    pedido velho (createdAt + ttl ja passou): REJEITADA_EXPIRADA
+  ok    relogio do celular adiantado demais: REJEITADA_EXPIRADA
+  ok    acao fora do contrato (LIGAR_BOMBA): REJEITADA_CONTRATO, sem atuar
+  ok    bomba sem fluxo de novo: alerta FALHA_IRRIGACAO chega ao app
+  ok    estado retido mostra falhaPendente (IRRIGACAO) e irrigacao bloqueada
+  ok    app reconhece a falha: EXECUTADA, irrigacao liberada
+  ok    irrigacao volta logo apos o reconhecimento (antes do bloqueio vencer sozinho)
+  ok    estado retido volta a falhaPendente=false
+  ok    retry do mesmo requestId: IGNORADA_DUPLICADA, com o resultado original
+  ok    o retry nao repete o efeito
+  ok    toda RespostaApp publicada respeita o contrato
+20. Marco 4 -- R5: o app como produtor (sensor de luz do celular)
+  ok    leituras do celular chegam ao servico: luz ADEQUADA no estado retido
+  ok    sombra momentanea (menor que o tempo minimo) NAO gera alerta
+  ok    pouca luz SUSTENTADA: LUZ_INSUFICIENTE e estado POUCA_LUZ
+  ok    luz volta e se mantem: LUZ_NORMALIZADA
+  ok    sol direto sustentado: LUZ_EXCESSIVA
+  ok    lux fora da faixa fisica (-5): rejeitado pelo contrato, servico vivo
+  ok    leitura medida ha 60 s (atrasada): arquivada como historico, nao decide
+  ok    a mesma LeituraLuz duas vezes (QoS 1): a segunda e descartada
+  ok    celular para de medir: depois da validade, SEM_MEDICAO
+  ok    gateway NAO publica LeituraLuz (ACL): broker derruba
+Resultado: 126 passaram; 0 falharam
+
+TODOS OS CAMINHOS VERIFICADOS COM SUCESSO
+

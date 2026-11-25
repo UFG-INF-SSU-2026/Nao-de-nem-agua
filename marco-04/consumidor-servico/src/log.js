@@ -35,7 +35,11 @@ const ETAPAS = {
   SEM_ACAO: { cor: CORES.cinza, rotulo: 'SEM_ACAO' },
   COMANDO: { cor: CORES.verde, rotulo: 'COMANDO' },
   ACK: { cor: CORES.azul, rotulo: 'ACK' },
-  CONEXAO: { cor: CORES.amarelo, rotulo: 'CONEXAO' }
+  CONEXAO: { cor: CORES.amarelo, rotulo: 'CONEXAO' },
+  // Marco 4
+  PERSISTENCIA: { cor: CORES.amarelo, rotulo: 'BANCO' },
+  PERFIL: { cor: CORES.azul, rotulo: 'PERFIL' },
+  APP: { cor: CORES.verde, rotulo: 'APP' }
 };
 
 class Log {

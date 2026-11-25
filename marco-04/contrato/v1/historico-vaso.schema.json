@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "naodenemagua/v1/historico-vaso",
+  "title": "HistoricoVaso v1",
+  "description": "Marco 4: resposta de GET /v1/vasos/{vasoId}/historico?horas=N da API de historico (api-historico, HTTPS, somente leitura). Series agregadas por passo a partir do TimescaleDB (agregados continuos solo_1min e ambiente_1min; time_bucket sobre telemetria_luz e telemetria_reservatorio).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventType", "entityId", "geradoEm", "de", "ate", "horas", "passoMin", "series", "resumo"],
+  "$defs": {
+    "serie": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["t", "v"],
+        "properties": {
+          "t": { "type": "string", "format": "utc-date-time", "description": "Inicio do intervalo (bucket)." },
+          "v": { "type": "number", "description": "Media no intervalo." }
+        }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "eventType": { "const": "HistoricoVaso" },
+    "entityId": { "type": "string", "minLength": 1 },
+    "geradoEm": { "type": "string", "format": "utc-date-time" },
+    "de": { "type": "string", "format": "utc-date-time" },
+    "ate": { "type": "string", "format": "utc-date-time" },
+    "horas": { "type": "integer", "minimum": 1 },
+    "passoMin": { "type": "integer", "minimum": 1, "description": "Largura de cada ponto das series, em minutos." },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["soloUmidadePct", "arUmidadePct", "arTemperaturaC", "luzLux", "reservatorioAguaPct", "reservatorioAduboPct"],
+      "properties": {
+        "soloUmidadePct": { "$ref": "#/$defs/serie" },
+        "arUmidadePct": { "$ref": "#/$defs/serie" },
+        "arTemperaturaC": { "$ref": "#/$defs/serie" },
+        "luzLux": { "$ref": "#/$defs/serie" },
+        "reservatorioAguaPct": { "$ref": "#/$defs/serie" },
+        "reservatorioAduboPct": { "$ref": "#/$defs/serie" }
+      }
+    },
+    "resumo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["irrigacoes", "dosesAdubo", "alertas"],
+      "properties": {
+        "irrigacoes": { "type": "integer", "minimum": 0, "description": "Pulsos de irrigacao comandados no periodo." },
+        "dosesAdubo": { "type": "integer", "minimum": 0 },
+        "alertas": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

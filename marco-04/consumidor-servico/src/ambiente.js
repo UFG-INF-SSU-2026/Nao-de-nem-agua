@@ -78,6 +78,22 @@ class EstadoAmbiente {
     return this.estado !== ESTADOS_AR.NORMAL;
   }
 
+  /*
+   * Marco 4 -- persistencia. So o instante da ultima troca (tempo minimo entre
+   * trocas do rele). O umidificador volta como DESLIGADO: a concessao vence
+   * sozinha no dispositivo, e o servico renova se o ar continuar seco.
+   */
+  exportar() {
+    return { ultimaMudancaEm: this.ultimaMudancaEm, umidificadorLigado: this.umidificadorLigado };
+  }
+
+  restaurar(s) {
+    if (!s) return;
+    this.ultimaMudancaEm = s.ultimaMudancaEm ?? null;
+    this.umidificadorLigado = false;
+    this.ultimaConcessaoEm = null;
+  }
+
   resumo() {
     const m = this.media();
     return {

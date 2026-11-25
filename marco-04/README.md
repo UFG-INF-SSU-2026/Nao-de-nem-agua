@@ -1,5 +1,31 @@
 # Marco 4 — mais sensores, mais atuadores, mesma fronteira
 
+## Entregas do Marco 4
+
+| Item obrigatório (PDF) | Onde está |
+|---|---|
+| **Aplicativo móvel** — APK instalável, integrado, com o sensor de luz do celular | APK: [`entrega/naodenemagua-1.0-marco4.apk`](entrega) · código: [`app-android/`](app-android) · documentação: [`docs/aplicativo.md`](docs/aplicativo.md) |
+| **Persistência** — banco temporal | [`docs/persistencia.md`](docs/persistencia.md) (TimescaleDB) · histórico no app: [`docs/aplicativo.md` §8](docs/aplicativo.md#8-histórico-api-somente-leitura-sobre-o-timescaledb) |
+| **Testes automatizados** — comandos e resultados | [`docs/testes.md`](docs/testes.md) (251 verificações, relação com módulos e requisitos) · saídas: [`docs/evidencias/`](docs/evidencias) |
+| **Documentação técnica de implantação** | [`docs/implantacao.md`](docs/implantacao.md) — pré-requisitos, versões, credenciais de teste, banco, ordem de execução, app |
+| **Relatório técnico** (artigo, PDF) | [A PREENCHER: caminho do PDF] |
+| **Vídeo** (até 15 min) | [A PREENCHER: link] |
+| **Atendimento ao feedback** do Marco 3 | [`docs/feedback.md`](docs/feedback.md) |
+| Diagrama atualizado e distribuição justificada | [`docs/diagramas/componentes.md`](docs/diagramas/componentes.md) · sequência: [`docs/diagramas/sequencia.md`](docs/diagramas/sequencia.md) |
+| Contratos | [`contrato/v1/`](contrato/v1) · [`docs/contrato.md`](docs/contrato.md) |
+| Segurança | [`docs/seguranca.md`](docs/seguranca.md) · app e API: [`docs/aplicativo.md` §2 e §8](docs/aplicativo.md#2-segurança) |
+| Limitações declaradas | [`docs/marco-04.md`](docs/marco-04.md) · [`docs/aplicativo.md` §9](docs/aplicativo.md#9-limitações-declaradas) · [`docs/persistencia.md` §7](docs/persistencia.md#7-limitações) · [`docs/implantacao.md` §8](docs/implantacao.md#8-limitações-da-implantação) |
+| Contribuições individuais | [A PREENCHER] |
+| Declaração de uso de IA | [`docs/uso-de-ia.md`](docs/uso-de-ia.md) |
+
+**Para rodar tudo:** [`docs/implantacao.md`](docs/implantacao.md). Resumo:
+`npm install` → `npm run seguranca` → `npm run banco` → `npm run banco:seed` →
+`npm run broker` · `npm run servico` · `npm run simulador` · `npm run api` →
+instalar o APK, `adb reverse` das portas 8883 e 8443, entrar com
+`app-vaso-01` (senha: `npm run app:credencial`).
+
+---
+
 Evolução do Marco 3, em resposta ao feedback de "usar mais sensores e deixar a
 solução mais complexa". A arquitetura **não mudou**: o dispositivo mede, valida
 e atua; o `servico-irrigacao` guarda o estado e decide; tudo atravessa o broker
@@ -12,40 +38,64 @@ por **MQTT/TLS**, com **contrato versionado**, **comandos idempotentes** e
 | Atuadores | bomba (LED) | **bomba de água**, **bomba de fertilizante** e **umidificador** (relés) |
 | Regras no serviço | histerese + debounce + cooldown | **R1** umidificador por concessão · **R2** irrigação com bloqueio por reservatório e **verificação cruzada do efeito** · **R3** adubação por máquina de estados (irrigar antes, medir de novo, limite de doses) · **R4** estados dos reservatórios |
 | Proteções no dispositivo | idempotência e prazo | + **`REJEITADO_SEGURANCA`**: reservatório crítico, intertravamento das bombas, adubo em solo seco, umidificador sem sensor |
-| Verificações automáticas | 62 | **95** |
+| Verificações automáticas | 62 | **126** |
 
 - Marco 4: sensores, regras, contrato novo e limitações → [`docs/marco-04.md`](docs/marco-04.md)
+- Marco 4: **persistência** (TimescaleDB: histórico, estado restaurado no reinício, perfil de cuidado por espécie/grupo/vaso) → [`docs/persistencia.md`](docs/persistencia.md)
+- Marco 4: **aplicativo Android** ([`app-android/`](app-android)) — Kotlin + Compose, MQTT sobre TLS com a CA do grupo, identidade `app-vaso-01`, estado retido `EstadoVaso`, pedido `SolicitacaoApp` → `RespostaApp`; compilar, instalar e conectar o celular → [`docs/aplicativo.md`](docs/aplicativo.md)
+
+### O segundo par produtor-consumidor: serviço → notificador
+
+| Papel | Quem | O quê |
+|---|---|---|
+| **Produtor** | `servico-irrigacao`, que até o Marco 2 era só consumidor | publica `AlertaCuidado` em `alert/cuidado` quando o estado muda (solo seco, reservatório crítico, falha de irrigação…) |
+| **Consumidor** | `notificador`, processo separado que faz o papel do app / Alexa | assina `alert/#`, valida o contrato, descarta duplicados e vencidos e mostra um cartão no terminal |
+
+O produtor não é um processo novo: é o mesmo serviço com um segundo papel. O
+notificador é separado para que uma falha nele não afete a irrigação, para que
+pela ACL ele **só possa ler** (não consegue comandar a bomba) e para que trocar
+o terminal pelo app real seja apenas trocar o assinante. No Marco 4 esse fluxo
+leva também os 11 alertas novos. Explicação completa, diagrama e roteiro de
+demonstração → [`docs/marco-04.md`, §6](docs/marco-04.md#6-o-segundo-par-produtor-consumidor-serviço--notificador).
 
 O Marco 3 já tinha, e continua valendo:
 
-- **Novo ciclo produtor-consumidor:** o `servico-irrigacao`, que era só
-  consumidor, passa a **produzir alertas de cuidado** (`AlertaCuidado`). Eles
-  são consumidos pelo **notificador**, um processo independente que representa
-  o aplicativo ou a Alexa no terminal, com validação, deduplicação e expiração.
+- **Par serviço → notificador**, descrito acima.
 - **Segurança:** **canal TLS**, **autenticação por usuário/senha**, **ACL no
   broker** e **assinatura HMAC** de cada mensagem do dispositivo.
 
 - Segurança (canal, identidade, autorização, HMAC) → [`docs/seguranca.md`](docs/seguranca.md)
 - Decisões arquiteturais → [`docs/arquitetura.md`](docs/arquitetura.md)
 - Contrato e payloads → [`docs/contrato.md`](docs/contrato.md)
-- Alertas, correlação, TTL e ACL futura → [`docs/alertas.md`](docs/alertas.md)
+- Alertas (especificação do par serviço → notificador: gatilhos, correlação, TTL, ACL) → [`docs/alertas.md`](docs/alertas.md)
 - Diagramas → [`docs/diagramas/`](docs/diagramas/) (fluxo do Marco 3; os ramos novos estão em `docs/marco-04.md`)
 
 ---
 
 ## Executar
 
-Requer **Node.js 20+**. Não requer Docker.
+Requer **Node.js 22+** e **Docker** (para o banco TimescaleDB). Sem Docker,
+`$env:PERSISTENCIA_HABILITADA="0"` roda tudo em memória, como no Marco 3.
 
 ```bash
 cd marco-04 && npm install
 ```
 
-Na primeira vez, gere a CA, o certificado do broker e as senhas de cada
-identidade (esses arquivos **não** vão para o git):
+Na primeira vez, gere a CA, o certificado do broker, as senhas de cada
+identidade e as senhas do banco (`.env`) — esses arquivos **não** vão para o git:
 
 ```bash
 npm run seguranca
+```
+
+Suba o banco e grave o cadastro inicial (`vaso-01` = jiboia, na sala):
+
+```bash
+npm run banco
+```
+
+```bash
+npm run banco:seed
 ```
 
 Depois, **quatro terminais PowerShell**, todos na pasta `marco-04`:
@@ -66,6 +116,19 @@ npm run simulador
 npm run notificador
 ```
 
+Para o **aplicativo** (Marco 4), um quinto terminal com a API de histórico e o
+redirecionamento das duas portas pelo cabo USB (celular com depuração USB):
+
+```bash
+npm run api
+```
+
+```powershell
+& "$env:LOCALAPPDATAAndroidSdkplatform-toolsadb.exe" reverse tcp:8883 tcp:8883; & "$env:LOCALAPPDATAAndroidSdkplatform-toolsadb.exe" reverse tcp:8443 tcp:8443
+```
+
+Compilar e instalar o app, e entrar com `app-vaso-01`: [`docs/aplicativo.md`](docs/aplicativo.md), §3 e §5.
+
 Pronto — a telemetria já está atravessando a fronteira. No terminal do
 simulador, pressione `s` para secar o solo e observe a decisão acontecer. Para
 os sensores novos: `h` (ar seco → umidificador), `n` (faltam nutrientes →
@@ -79,7 +142,7 @@ npm run teste
 ```
 
 Sobe broker local (TLS) em porta livre, serviço, notificador e simulador como
-subprocessos e assume o papel do dispositivo. São 95 verificações:
+subprocessos e assume o papel do dispositivo. São 126 verificações:
 
 - **seções 1 a 7 (Marco 2):** decisão, deduplicação, contrato, expiração, retry,
   comando expirado, evento histórico e *will message*;
@@ -92,11 +155,59 @@ subprocessos e assume o papel do dispositivo. São 95 verificações:
   verificação cruzada do efeito da irrigação, adubação (falso positivo evitado,
   dose confirmada, limite de doses, excesso), intertravamento e bomba sem fluxo.
   Usam o **simulador real**, com as teclas enviadas por pipe.
+- **seção 19 (app):** o teste faz o papel do aplicativo — identidade própria,
+  estado retido, ACL (não comanda, não vê outro vaso, não falsifica `deviceId`),
+  reconhecimento de falha de ponta a ponta, pedido expirado, fora do contrato e
+  repetido. Ver [`docs/aplicativo.md`](docs/aplicativo.md), §4.
+- **seção 20 (luz):** o teste faz o papel do celular publicando `LeituraLuz` —
+  regra R5 com média, tempo mínimo (sombra passageira não alerta), histerese,
+  validade, leitura atrasada e duplicada, e ACL. Ver [`docs/aplicativo.md`](docs/aplicativo.md), §7.
 
-Não depende de internet. Leva cerca de 3 minutos.
+Não depende de internet. Leva cerca de 4 minutos. Última execução:
+[`docs/evidencias/teste-integracao.txt`](docs/evidencias/teste-integracao.txt).
 
 Use depois de qualquer alteração, inclusive depois da alteração feita ao vivo
-durante a verificação.
+durante a verificação. Roda em memória (`PERSISTENCIA_HABILITADA=0`), sem banco.
+
+**Persistência (Marco 4):**
+
+```bash
+npm run teste:unidade
+```
+
+40 testes unitários (`node:test`, sem banco nem broker): fila de gravação com o
+banco caindo e voltando, perfil de cuidado, restauração de cada regra e a regra
+R5 de luz (`consumidor-servico/test/luz.test.js`) e a API de histórico
+(`api-historico/test/api.test.js`).
+
+```bash
+npm run teste:persistencia
+```
+
+37 verificações com broker, serviço e banco reais (requer `npm run banco`; usa
+o banco separado `naodenemagua_teste`): gravação nas hypertables, **`SIGKILL` no
+serviço e restauração** (limite de doses, bloqueio e deduplicação continuam
+valendo), **queda do banco** com o serviço rodando e fila despejada na volta,
+dados preservados após reiniciar o contêiner, troca de espécie sem reiniciar e
+menor privilégio no banco. Leva cerca de 1 minuto e **para e religa o contêiner**
+(`-- --sem-queda-banco` pula essa parte). Evidências em
+[`docs/evidencias/`](docs/evidencias/); explicação em
+[`docs/persistencia.md`, §6](docs/persistencia.md#6-testes-e-evidências).
+
+**API de histórico (Marco 4):**
+
+```bash
+npm run teste:api
+```
+
+25 verificações por HTTPS contra a API real e o banco de teste (requer `npm run
+banco`): TLS e nome do certificado, 401/403/400/405, dados exatos com as
+exclusões (inválida, atrasada, replayed, outro vaso), resumo, alertas e 429 por
+força bruta. Evidência em [`docs/evidencias/teste-api.txt`](docs/evidencias/teste-api.txt);
+explicação em [`docs/aplicativo.md`, §8](docs/aplicativo.md#8-histórico-api-somente-leitura-sobre-o-timescaledb).
+
+`npm run banco:consultar` mostra o que está gravado (contagens, agregado por
+minuto, últimos alertas e comandos, snapshot do estado e perfil efetivo).
 
 ---
 
@@ -125,7 +236,7 @@ durante a verificação.
 | `f` | **Marco 4:** bombas "sem fluxo" (ligam, não movem nada) → `FALHA_IRRIGACAO` / `FALHA_ADUBACAO` |
 | `z` | **Marco 4:** falha do DHT22 → `SENSOR_FALHOU` e umidificador desligado |
 
-No terminal do serviço, `e` imprime o estado corrente (solo, ar, reservatórios, verificação e adubação) e `r` reconhece uma falha de irrigação/adubação, liberando a regra bloqueada — é o lugar do botão do aplicativo.
+No terminal do serviço, `e` imprime o estado corrente (solo, ar, reservatórios, verificação e adubação) e `r` reconhece uma falha de irrigação/adubação, liberando a regra bloqueada — é a mesma função que o botão **Reconhecer falha** do aplicativo aciona por `SolicitacaoApp`.
 
 ## Ataques de demonstração
 
@@ -252,6 +363,15 @@ RESERVATORIOS_NIVEL_CRITICO_PCT=30 npm run servico
 ```
 marco-04/
 ├── config.json                 configuração única dos três componentes
+├── docker-compose.yml          TimescaleDB (Marco 4); senhas no .env (npm run seguranca)
+├── persistencia/               Marco 4 — ARMAZENAMENTO
+│   ├── index.js                fila de gravação, snapshot do estado, leitura do cadastro
+│   ├── perfil.js               perfil de cuidado: config.json <- espécie <- grupo <- vaso <- ambiente
+│   ├── schema.sql              hypertables, agregados contínuos, estado, cadastro (migração idempotente)
+│   ├── seed.sql                cadastro inicial (npm run banco:seed)
+│   ├── cli.js                  banco:migrar / banco:seed / banco:consultar
+│   ├── init/01-papeis.sh       papéis servico_irrigacao e leitor_app (menor privilégio)
+│   └── test/                   testes unitários (npm run teste:unidade)
 ├── seguranca/
 │   ├── index.js                TLS, senha (scrypt), ACL e HMAC
 │   ├── gerar.js                `npm run seguranca`: CA, certificado, senhas
@@ -275,8 +395,12 @@ marco-04/
 │   ├── src/atuadores.js        emissão e confirmação de ComandoAtuador (Marco 4)
 │   └── src/log.js              log legível + eventos.jsonl
 ├── notificador/src/main.js     consumidor independente de alert/#
+├── api-historico/           Marco 4 — API HTTPS somente leitura do histórico para o app (leitor_app)
+├── app-android/             Marco 4 — aplicativo Android (Kotlin + Compose)
 ├── scripts/
-│   ├── teste-integracao.js     verificação automática: fronteira, alertas, segurança e Marco 4 (95)
+│   ├── teste-integracao.js     verificação automática: fronteira, alertas, segurança, Marco 4, app e luz (126)
+│   ├── teste-persistencia.js   persistência: gravação, SIGKILL + restauração, queda do banco, perfil (37)
+│   ├── teste-api.js            API de histórico: TLS, identidade, autorização, entrada, dados e força bruta (25)
 │   ├── ataques.js              `npm run ataque -- <nome>`: ataques de demonstração
 │   └── observador.js           segundo consumidor
 └── docs/                       arquitetura, contrato, segurança, diagramas e marco-04.md

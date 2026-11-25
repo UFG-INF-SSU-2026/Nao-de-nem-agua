@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://naodenemagua/contrato/v1/perfil-cuidado.schema.json",
+  "title": "PerfilCuidado",
+  "description": "Marco 4. Perfil de cuidado PARCIAL guardado no cadastro (especies.parametros, grupos.parametros, vasos.parametros). So contem o que difere do config.json. Nao trafega no MQTT: e lido do banco pelo servico e combinado na ordem config.json <- especie <- grupo <- vaso <- variaveis de ambiente.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "regra": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limiarLiga": { "type": "number", "minimum": 0, "maximum": 100, "description": "Umidade do solo (%) abaixo da qual a irrigacao e autorizada." },
+        "limiarDesliga": { "type": "number", "minimum": 0, "maximum": 100, "description": "Umidade do solo (%) acima da qual a irrigacao para (histerese)." },
+        "duracaoPulsoMs": { "type": "integer", "minimum": 500, "maximum": 10000 },
+        "cooldownMs": { "type": "integer", "minimum": 1000, "maximum": 86400000 }
+      }
+    },
+    "ambiente": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "umidadeArMin": { "type": "number", "minimum": 0, "maximum": 100 },
+        "histerese": { "type": "number", "minimum": 1, "maximum": 50 }
+      }
+    },
+    "adubacao": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ec25MinUsCm": { "type": "number", "minimum": 0, "maximum": 10000 },
+        "ec25MaxUsCm": { "type": "number", "minimum": 0, "maximum": 10000 },
+        "umidadeMinPct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "maxDoses": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "janelaDosesMs": { "type": "integer", "minimum": 1000 }
+      }
+    }
+  }
+}

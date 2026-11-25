@@ -1,0 +1,35 @@
+# Testes unitarios do app Android -- gradlew testDebugUnitTest
+# 2026-11-24T23:27:47.076Z
+
+br.ufg.naodenemagua.ContratosTest  (8 testes, 0 falhas, 0 erros)
+  ok    estadoVasoDeOutraVersaoOuTipoERejeitado
+  ok    servicoParadoDepoisDeTresPulsosSemAtualizacao
+  ok    alertaComSeveridadeDesconhecidaERejeitado
+  ok    heartbeatOfflineDaWillMessage
+  ok    solicitacaoSaiNoContrato
+  ok    falhasPendentesEOpcional
+  ok    falhasDeConexaoViramMotivoAcionavel
+  ok    estadoVasoValidoELido
+
+br.ufg.naodenemagua.HistoricoTest  (4 testes, 0 falhas, 0 erros)
+  ok    respostaForaDoContratoERejeitada
+  ok    alertasDoBanco
+  ok    historicoSemSeriesEVazio
+  ok    historicoValidoELido
+
+br.ufg.naodenemagua.LuzTest  (6 testes, 0 falhas, 0 erros)
+  ok    antesDaPrimeiraLeituraNaoHaOQuePublicar
+  ok    janelaFazAMediaDasAmostras
+  ok    leituraLuzSaiNoContrato
+  ok    semAmostraNovaRepeteAUltimaComZeroAmostras
+  ok    horarioSaiComNoMaximoMilissegundos
+  ok    estadoVasoSemLuzContinuaValido
+
+br.ufg.naodenemagua.PedidoTest  (5 testes, 0 falhas, 0 erros)
+  ok    codigoDesconhecidoNaoQuebraARotulagem
+  ok    duplicadaDeUmPedidoAtendidoESucesso
+  ok    expiradaEContratoSaoErro
+  ok    executadaDizOQueFoiLiberado
+  ok    tentarDeNovoReaproveitaOPedidoSoDentroDoPrazo
+
+Resultado: 23 passaram; 0 falharam

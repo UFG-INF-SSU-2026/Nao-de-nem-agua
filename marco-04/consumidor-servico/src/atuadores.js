@@ -17,8 +17,9 @@ const seguranca = require('../../seguranca');
 const LIMITE = 500;
 
 class Atuadores {
-  constructor(cliente, cfg, log, topicos) {
+  constructor(cliente, cfg, log, topicos, persistencia) {
     this.cliente = cliente;
+    this.persistencia = persistencia || null; // Marco 4: historico de comandos
     this.cfg = cfg;
     this.log = log;
     this.topicos = topicos;
@@ -70,6 +71,12 @@ class Atuadores {
     if (this.pendentes.size > LIMITE) this.pendentes.delete(this.pendentes.keys().next().value);
 
     this.log.registrar('DECISAO', `${actuator} ${action} porque ${reason}`, { comando });
+    if (this.persistencia) {
+      this.persistencia.gravar('comandos', {
+        command_id: commandId, tipo: 'ComandoAtuador', atuador: actuator, acao: action, motivo: reason,
+        correlation_id: origem.eventId, duracao_ms: durationMs ?? null, device_id: origem.deviceId, payload: comando
+      });
+    }
     this.cliente.publish(this.topicos.comandoAtuador, texto, { qos: this.cfg.mqtt.qos }, (erro) => {
       if (erro) this.log.registrar('REJEITADO', `falha ao publicar ${commandId}: ${erro.message}`);
       else this.log.registrar('COMANDO', `${commandId} publicado -> ${actuator} ${action}` +
