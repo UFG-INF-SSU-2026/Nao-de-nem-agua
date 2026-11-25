@@ -18,7 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { gerar, ARQUIVOS } = require('./gerar');
+const { gerar, ARQUIVOS, ARQUIVOS_ASSINATURA } = require('./gerar');
 
 const DIR = __dirname;
 
@@ -219,8 +219,68 @@ function verificarAssinatura(chaveHex, topico, texto) {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------------------
+// Marco 4 -- assinatura das mensagens do APP e para o app (broker publico)
+// ---------------------------------------------------------------------------
+
+/*
+ * No broker publico (caminho B) o app nao tem senha nem ACL que o proteja.
+ * Por isso as mensagens trocadas com ele passam a ser assinadas nos dois
+ * sentidos (ver gerar.js, ARQUIVOS_ASSINATURA):
+ *
+ *   app -> servico   HMAC-SHA256, chave PROPRIA do app, campo `sig` -- o mesmo
+ *                    formato dos dispositivos (ultimo campo, topico incluido).
+ *   servico -> app   ECDSA P-256 / SHA-256, campo `assinatura` (DER em hex),
+ *                    tambem o ultimo campo e sobre `${topico}\n${corpo}`. O app
+ *                    so tem a chave publica: confere, mas nao consegue forjar.
+ */
+const SUFIXO_ASSINATURA = /,"assinatura":"([0-9a-f]{120,150})"\}$/;
+
+let chavesAppCache = null;
+let chavePrivadaServico = null;
+
+/* Chave HMAC e vaso de uma identidade `app`; null se nao e um app conhecido. */
+function chaveApp(deviceId) {
+  if (!chavesAppCache) {
+    garantirMaterial();
+    chavesAppCache = lerJson(ARQUIVOS_ASSINATURA.chavesApp).apps || {};
+  }
+  return chavesAppCache[deviceId] || null;
+}
+
+/* Recebe o JSON do corpo (texto) e devolve o texto com `assinatura` no fim. */
+function assinarServico(topico, corpo) {
+  if (!chavePrivadaServico) {
+    garantirMaterial();
+    chavePrivadaServico = crypto.createPrivateKey(fs.readFileSync(ARQUIVOS_ASSINATURA.servicoKey));
+  }
+  const sig = crypto.sign('sha256', Buffer.from(`${topico}\n${corpo}`, 'utf8'), {
+    key: chavePrivadaServico,
+    dsaEncoding: 'der'
+  });
+  return `${corpo.slice(0, -1)},"assinatura":"${sig.toString('hex')}"}`;
+}
+
+/*
+ * Confere a assinatura do servico (o que o app faz em Kotlin; aqui para os
+ * testes e para o observador). chavePublica: PEM ou KeyObject; sem ela, usa a
+ * desta maquina.
+ */
+function verificarAssinaturaServico(topico, texto, chavePublica) {
+  const m = SUFIXO_ASSINATURA.exec(texto);
+  if (!m) return { ok: false, motivo: 'ASSINATURA_AUSENTE' };
+  const corpo = texto.slice(0, m.index) + '}';
+  const chave = chavePublica || fs.readFileSync(ARQUIVOS_ASSINATURA.servicoPub);
+  const ok = crypto.verify('sha256', Buffer.from(`${topico}\n${corpo}`, 'utf8'), { key: chave, dsaEncoding: 'der' },
+    Buffer.from(m[1], 'hex'));
+  return ok ? { ok: true, corpo } : { ok: false, motivo: 'ASSINATURA_INVALIDA', detalhe: 'ECDSA nao confere com a chave do servico' };
+}
+
 module.exports = {
   garantirMaterial,
+  chaveApp,
+  assinarServico,
+  verificarAssinaturaServico,
   certificadosBroker,
   caPropria,
   senhaDe,

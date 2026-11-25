@@ -4,7 +4,7 @@
 
 
 Teste de integracao da fronteira produtor <-> consumidor
-  broker de teste  mqtts://127.0.0.1:64996 (TLS + usuario/senha + ACL)
+  broker de teste  mqtts://127.0.0.1:52699 (TLS + usuario/senha + ACL)
   validade=2500ms cooldown=1200ms ttl=2000ms
 
 1. Estado normal -- solo umido nao deve gerar comando
@@ -144,6 +144,9 @@ Teste de integracao da fronteira produtor <-> consumidor
   ok    retry do mesmo requestId: IGNORADA_DUPLICADA, com o resultado original
   ok    o retry nao repete o efeito
   ok    toda RespostaApp publicada respeita o contrato
+  ok    estado e respostas chegam ao app com assinatura ECDSA valida do servico
+  ok    pedido assinado com a chave HMAC do app e atendido
+  ok    pedido com HMAC de outra chave e descartado sem resposta
 20. Marco 4 -- R5: o app como produtor (sensor de luz do celular)
   ok    leituras do celular chegam ao servico: luz ADEQUADA no estado retido
   ok    sombra momentanea (menor que o tempo minimo) NAO gera alerta
@@ -155,7 +158,7 @@ Teste de integracao da fronteira produtor <-> consumidor
   ok    a mesma LeituraLuz duas vezes (QoS 1): a segunda e descartada
   ok    celular para de medir: depois da validade, SEM_MEDICAO
   ok    gateway NAO publica LeituraLuz (ACL): broker derruba
-Resultado: 126 passaram; 0 falharam
+Resultado: 129 passaram; 0 falharam
 
 TODOS OS CAMINHOS VERIFICADOS COM SUCESSO
 

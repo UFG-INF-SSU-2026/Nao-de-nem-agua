@@ -48,7 +48,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import br.ufg.naodenemagua.conexao.ConfigConexao
+import br.ufg.naodenemagua.conexao.HOST_BROKER_PUBLICO
+import br.ufg.naodenemagua.conexao.ModoBroker
 import br.ufg.naodenemagua.ui.theme.MarcaAgua
 import br.ufg.naodenemagua.ui.theme.MarcaTeal
 import br.ufg.naodenemagua.ui.theme.MarcaVerde
@@ -62,10 +67,23 @@ fun LoginTela(inicial: ConfigConexao, aoEntrar: (ConfigConexao, Boolean) -> Unit
     var vaso by rememberSaveable { mutableStateOf(inicial.vasoId) }
     var lembrar by rememberSaveable { mutableStateOf(true) }
     var mostrarSenha by rememberSaveable { mutableStateOf(false) }
+    var modo by rememberSaveable { mutableStateOf(inicial.modo) }
+    val publico = modo == ModoBroker.PUBLICO
 
     val portaValida = porta.toIntOrNull()?.let { it in 1..65535 } == true
-    val podeEntrar = host.isNotBlank() && portaValida && usuario.isNotBlank() && senha.isNotEmpty() && vaso.isNotBlank()
-    val entrar = { if (podeEntrar) aoEntrar(ConfigConexao(host, porta.toInt(), usuario, senha, vaso), lembrar) }
+    // No broker publico nao ha senha: a identidade vale so como deviceId, e
+    // quem autentica e a assinatura das mensagens.
+    val podeEntrar = host.isNotBlank() && portaValida && usuario.isNotBlank() && (publico || senha.isNotEmpty()) && vaso.isNotBlank()
+    val entrar = { if (podeEntrar) aoEntrar(ConfigConexao(host, porta.toInt(), usuario, senha, vaso, modo), lembrar) }
+    val trocarModo = { novo: ModoBroker ->
+        if (novo != modo) {
+            modo = novo
+            // Sugere o servidor de cada caminho, sem apagar um endereco digitado.
+            if (novo == ModoBroker.PUBLICO && (host == "localhost" || host.isBlank())) host = HOST_BROKER_PUBLICO
+            if (novo == ModoBroker.GRUPO && host == HOST_BROKER_PUBLICO) host = "localhost"
+            porta = "8883"
+        }
+    }
 
     Column(
         modifier
@@ -98,6 +116,30 @@ fun LoginTela(inicial: ConfigConexao, aoEntrar: (ConfigConexao, Boolean) -> Unit
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Rotulo("Qual broker")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf(ModoBroker.GRUPO to "Do grupo", ModoBroker.PUBLICO to "Público (Wokwi)").forEachIndexed { i, (m, rotulo) ->
+                        SegmentedButton(
+                            selected = modo == m,
+                            onClick = { trocarModo(m) },
+                            shape = SegmentedButtonDefaults.itemShape(i, 2),
+                            icon = {
+                                SegmentedButtonDefaults.Icon(modo == m) {
+                                    Icon(if (m == ModoBroker.GRUPO) Icones.Escudo else Icones.Wifi, null, Modifier.size(18.dp))
+                                }
+                            }
+                        ) { Text(rotulo) }
+                    }
+                }
+                if (publico) {
+                    Aviso(
+                        "O mesmo broker do ESP32 no Wokwi. Nenhuma senha é enviada a ele: o app só aceita mensagens " +
+                            "assinadas pelo serviço e assina tudo o que publica. Rode o serviço com MQTT_URL apontando para ele.",
+                        Sinal.INFO
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
                 Rotulo("Onde está o broker")
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Campo(
@@ -110,26 +152,29 @@ fun LoginTela(inicial: ConfigConexao, aoEntrar: (ConfigConexao, Boolean) -> Unit
                     )
                 }
                 Text(
-                    "Pelo cabo USB use localhost (com adb reverse).",
+                    if (publico) "Precisa de internet no celular. O histórico fica só no broker do grupo."
+                    else "Pelo cabo USB use localhost (com adb reverse).",
                     style = MaterialTheme.typography.bodySmall, color = CINZA
                 )
 
                 Spacer(Modifier.height(4.dp))
                 Rotulo("Sua identidade")
                 Campo(usuario, { usuario = it.trim() }, "Usuário", Icones.Usuario)
-                Campo(
-                    senha, { senha = it.trim() }, "Senha", Icones.Cadeado,
-                    teclado = KeyboardType.Password,
-                    visual = if (mostrarSenha) VisualTransformation.None else PasswordVisualTransformation(),
-                    final = {
-                        IconButton(onClick = { mostrarSenha = !mostrarSenha }) {
-                            Icon(
-                                if (mostrarSenha) Icones.OlhoFechado else Icones.Olho,
-                                contentDescription = if (mostrarSenha) "Ocultar senha" else "Mostrar senha"
-                            )
+                if (!publico) {
+                    Campo(
+                        senha, { senha = it.trim() }, "Senha", Icones.Cadeado,
+                        teclado = KeyboardType.Password,
+                        visual = if (mostrarSenha) VisualTransformation.None else PasswordVisualTransformation(),
+                        final = {
+                            IconButton(onClick = { mostrarSenha = !mostrarSenha }) {
+                                Icon(
+                                    if (mostrarSenha) Icones.OlhoFechado else Icones.Olho,
+                                    contentDescription = if (mostrarSenha) "Ocultar senha" else "Mostrar senha"
+                                )
+                            }
                         }
-                    }
-                )
+                    )
+                }
                 Campo(vaso, { vaso = it.trim() }, "Vaso", Icones.Vaso, ultimo = true, aoConcluir = entrar)
 
                 Row(
@@ -137,7 +182,10 @@ fun LoginTela(inicial: ConfigConexao, aoEntrar: (ConfigConexao, Boolean) -> Unit
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Checkbox(checked = lembrar, onCheckedChange = { lembrar = it })
-                    Text("Lembrar a senha neste aparelho", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        if (publico) "Entrar direto ao abrir o app" else "Lembrar a senha neste aparelho",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
 
                 Button(
@@ -162,7 +210,8 @@ fun LoginTela(inicial: ConfigConexao, aoEntrar: (ConfigConexao, Boolean) -> Unit
             Icon(Icones.Escudo, null, tint = VERDE, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(
-                "MQTT sobre TLS · só confia na CA do grupo",
+                if (publico) "MQTT sobre TLS · mensagens assinadas (ECDSA e HMAC)"
+                else "MQTT sobre TLS · só confia na CA do grupo",
                 style = MaterialTheme.typography.labelMedium, color = CINZA
             )
         }

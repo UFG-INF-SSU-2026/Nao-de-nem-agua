@@ -6,16 +6,16 @@
 |---|---|
 | **Aplicativo móvel** — APK instalável, integrado, com o sensor de luz do celular | APK: [`entrega/naodenemagua-1.0-marco4.apk`](entrega) · código: [`app-android/`](app-android) · documentação: [`docs/aplicativo.md`](docs/aplicativo.md) |
 | **Persistência** — banco temporal | [`docs/persistencia.md`](docs/persistencia.md) (TimescaleDB) · histórico no app: [`docs/aplicativo.md` §8](docs/aplicativo.md#8-histórico-api-somente-leitura-sobre-o-timescaledb) |
-| **Testes automatizados** — comandos e resultados | [`docs/testes.md`](docs/testes.md) (251 verificações, relação com módulos e requisitos) · saídas: [`docs/evidencias/`](docs/evidencias) |
+| **Testes automatizados** — comandos e resultados | [`docs/testes.md`](docs/testes.md) (269 verificações, relação com módulos e requisitos) · saídas: [`docs/evidencias/`](docs/evidencias) |
 | **Documentação técnica de implantação** | [`docs/implantacao.md`](docs/implantacao.md) — pré-requisitos, versões, credenciais de teste, banco, ordem de execução, app |
-| **Relatório técnico** (artigo, PDF) | [A PREENCHER: caminho do PDF] |
-| **Vídeo** (até 15 min) | [A PREENCHER: link] |
+| **Relatório técnico** (artigo, PDF) | [`entrega/artigo-nao-de-nem-agua.pdf`](entrega/artigo-nao-de-nem-agua.pdf) |
+| **Vídeo** (até 15 min) | https://drive.google.com/file/d/1lyjB6UXMlkEua-U6CCoEp1_zxzBgpv9b/view?usp=sharing |
 | **Atendimento ao feedback** do Marco 3 | [`docs/feedback.md`](docs/feedback.md) |
 | Diagrama atualizado e distribuição justificada | [`docs/diagramas/componentes.md`](docs/diagramas/componentes.md) · sequência: [`docs/diagramas/sequencia.md`](docs/diagramas/sequencia.md) |
 | Contratos | [`contrato/v1/`](contrato/v1) · [`docs/contrato.md`](docs/contrato.md) |
 | Segurança | [`docs/seguranca.md`](docs/seguranca.md) · app e API: [`docs/aplicativo.md` §2 e §8](docs/aplicativo.md#2-segurança) |
-| Limitações declaradas | [`docs/marco-04.md`](docs/marco-04.md) · [`docs/aplicativo.md` §9](docs/aplicativo.md#9-limitações-declaradas) · [`docs/persistencia.md` §7](docs/persistencia.md#7-limitações) · [`docs/implantacao.md` §8](docs/implantacao.md#8-limitações-da-implantação) |
-| Contribuições individuais | [A PREENCHER] |
+| Limitações declaradas | **[`docs/limitacoes.md`](docs/limitacoes.md)** (consolidado: simulações, dados pessoais, segurança, conectividade, desempenho, energia) · detalhes em [`docs/marco-04.md`](docs/marco-04.md) · [`docs/aplicativo.md` §9](docs/aplicativo.md#9-limitações-declaradas) · [`docs/persistencia.md` §7](docs/persistencia.md#7-limitações) · [`docs/implantacao.md` §8](docs/implantacao.md#8-limitações-da-implantação) |
+| Contribuições individuais | [`docs/contribuicoes.md`](docs/contribuicoes.md) |
 | Declaração de uso de IA | [`docs/uso-de-ia.md`](docs/uso-de-ia.md) |
 
 **Para rodar tudo:** [`docs/implantacao.md`](docs/implantacao.md). Resumo:
@@ -38,7 +38,7 @@ por **MQTT/TLS**, com **contrato versionado**, **comandos idempotentes** e
 | Atuadores | bomba (LED) | **bomba de água**, **bomba de fertilizante** e **umidificador** (relés) |
 | Regras no serviço | histerese + debounce + cooldown | **R1** umidificador por concessão · **R2** irrigação com bloqueio por reservatório e **verificação cruzada do efeito** · **R3** adubação por máquina de estados (irrigar antes, medir de novo, limite de doses) · **R4** estados dos reservatórios |
 | Proteções no dispositivo | idempotência e prazo | + **`REJEITADO_SEGURANCA`**: reservatório crítico, intertravamento das bombas, adubo em solo seco, umidificador sem sensor |
-| Verificações automáticas | 62 | **126** |
+| Verificações automáticas | 62 | **269** (129 de integração + 48 unitários + 37 de persistência + 25 da API + 30 do app) |
 
 - Marco 4: sensores, regras, contrato novo e limitações → [`docs/marco-04.md`](docs/marco-04.md)
 - Marco 4: **persistência** (TimescaleDB: histórico, estado restaurado no reinício, perfil de cuidado por espécie/grupo/vaso) → [`docs/persistencia.md`](docs/persistencia.md)
@@ -55,7 +55,8 @@ O produtor não é um processo novo: é o mesmo serviço com um segundo papel. O
 notificador é separado para que uma falha nele não afete a irrigação, para que
 pela ACL ele **só possa ler** (não consegue comandar a bomba) e para que trocar
 o terminal pelo app real seja apenas trocar o assinante. No Marco 4 esse fluxo
-leva também os 11 alertas novos. Explicação completa, diagrama e roteiro de
+leva também os 14 alertas novos (11 dos sensores e atuadores + 3 da luz do
+celular). Explicação completa, diagrama e roteiro de
 demonstração → [`docs/marco-04.md`, §6](docs/marco-04.md#6-o-segundo-par-produtor-consumidor-serviço--notificador).
 
 O Marco 3 já tinha, e continua valendo:
@@ -68,7 +69,7 @@ O Marco 3 já tinha, e continua valendo:
 - Decisões arquiteturais → [`docs/arquitetura.md`](docs/arquitetura.md)
 - Contrato e payloads → [`docs/contrato.md`](docs/contrato.md)
 - Alertas (especificação do par serviço → notificador: gatilhos, correlação, TTL, ACL) → [`docs/alertas.md`](docs/alertas.md)
-- Diagramas → [`docs/diagramas/`](docs/diagramas/) (fluxo do Marco 3; os ramos novos estão em `docs/marco-04.md`)
+- Diagramas → [`docs/diagramas/`](docs/diagramas/) (componentes do Marco 4 com app, banco e API; sequência do app e do ciclo de alertas; detalhes das regras em `docs/marco-04.md`)
 
 ---
 
@@ -124,7 +125,7 @@ npm run api
 ```
 
 ```powershell
-& "$env:LOCALAPPDATAAndroidSdkplatform-toolsadb.exe" reverse tcp:8883 tcp:8883; & "$env:LOCALAPPDATAAndroidSdkplatform-toolsadb.exe" reverse tcp:8443 tcp:8443
+& "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:8883 tcp:8883; & "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe" reverse tcp:8443 tcp:8443
 ```
 
 Compilar e instalar o app, e entrar com `app-vaso-01`: [`docs/aplicativo.md`](docs/aplicativo.md), §3 e §5.
@@ -142,7 +143,7 @@ npm run teste
 ```
 
 Sobe broker local (TLS) em porta livre, serviço, notificador e simulador como
-subprocessos e assume o papel do dispositivo. São 126 verificações:
+subprocessos e assume o papel do dispositivo. São 129 verificações:
 
 - **seções 1 a 7 (Marco 2):** decisão, deduplicação, contrato, expiração, retry,
   comando expirado, evento histórico e *will message*;
@@ -175,9 +176,10 @@ durante a verificação. Roda em memória (`PERSISTENCIA_HABILITADA=0`), sem ban
 npm run teste:unidade
 ```
 
-40 testes unitários (`node:test`, sem banco nem broker): fila de gravação com o
-banco caindo e voltando, perfil de cuidado, restauração de cada regra e a regra
-R5 de luz (`consumidor-servico/test/luz.test.js`) e a API de histórico
+48 testes unitários (`node:test`, sem banco nem broker): fila de gravação com o
+banco caindo e voltando, perfil de cuidado, restauração de cada regra, a regra
+R5 de luz (`consumidor-servico/test/luz.test.js`), as assinaturas do app
+(`consumidor-servico/test/assinatura-app.test.js`) e a API de histórico
 (`api-historico/test/api.test.js`).
 
 ```bash
@@ -307,6 +309,26 @@ npm run notificador
 O host, prefixo e vaso precisam coincidir com os valores do firmware Wokwi.
 Para voltar ao broker local, use `Remove-Item Env:MQTT_URL` em cada terminal.
 
+**O app no caminho B (Marco 4).** O app também conecta ao broker público,
+com as mensagens assinadas nos dois sentidos: o app assina pedidos e luz com
+uma chave HMAC própria, e o serviço assina estado, alertas e respostas com
+ECDSA. O app só guarda a chave pública do serviço. Detalhes em
+`docs/seguranca.md` (seção 2.5).
+
+1. Rode `npm run seguranca` uma vez nesta máquina. Ele gera só as chaves de
+   assinatura que faltarem, sem trocar senhas nem certificados.
+2. Recompile e instale o app pelo Android Studio. O build copia para o APK a
+   chave pública do serviço e a chave do app.
+3. Deixe o serviço apontando para o HiveMQ, como no passo 3 acima.
+4. No login do app, escolha **Público (Wokwi)**. O servidor vira
+   `broker.hivemq.com`, porta 8883, sem senha; mantenha o usuário
+   `app-vaso-01` e o vaso `vaso-01`. O celular precisa de internet, e não é
+   preciso `adb reverse`.
+
+Nesse modo a aba Histórico fica indisponível (a API pede a senha do grupo), e
+o card do dispositivo mostra o que o serviço concluiu, porque o sinal de vida
+do ESP32 é assinado com a chave dele.
+
 ---
 
 ## Segundo consumidor
@@ -317,8 +339,8 @@ npm run observador
 
 Assina os quatro tópicos anteriores e `alert/#` e apenas imprime. Pode ser ligado e desligado a
 qualquer momento **sem que produtor ou serviço saibam que ele existe** — é a
-demonstração prática do desacoplamento, e o lugar que o app Android ocupará na
-evolução prevista.
+demonstração prática do desacoplamento. Foi por esse mesmo caminho que o app
+Android entrou no Marco 4: mais um assinante, sem mudar o produtor.
 
 ---
 
@@ -379,7 +401,8 @@ marco-04/
 │   └── chaves-hmac.json        chaves de demonstração por dispositivo
 ├── contrato/
 │   ├── index.js                carregamento, validação (ajv), tópicos e conexão segura
-│   └── v1/*.schema.json        oito schemas: + LeituraAmbiente, NivelReservatorio, ComandoAtuador (Marco 4)
+│   └── v1/*.schema.json        15 schemas: + LeituraAmbiente, NivelReservatorio, ComandoAtuador, EstadoVaso,
+│                               SolicitacaoApp, RespostaApp, LeituraLuz, HistoricoVaso, HistoricoAlertas e PerfilCuidado (Marco 4)
 ├── produtor-esp32/             PRODUTOR — firmware Wokwi (caminho B) + custom chip sonda-solo
 ├── simulador-produtor/         PRODUTOR — substituto declarado (caminho A)
 ├── broker-local/               MIDDLEWARE — broker Aedes
@@ -398,12 +421,12 @@ marco-04/
 ├── api-historico/           Marco 4 — API HTTPS somente leitura do histórico para o app (leitor_app)
 ├── app-android/             Marco 4 — aplicativo Android (Kotlin + Compose)
 ├── scripts/
-│   ├── teste-integracao.js     verificação automática: fronteira, alertas, segurança, Marco 4, app e luz (126)
+│   ├── teste-integracao.js     verificação automática: fronteira, alertas, segurança, Marco 4, app e luz (129)
 │   ├── teste-persistencia.js   persistência: gravação, SIGKILL + restauração, queda do banco, perfil (37)
 │   ├── teste-api.js            API de histórico: TLS, identidade, autorização, entrada, dados e força bruta (25)
 │   ├── ataques.js              `npm run ataque -- <nome>`: ataques de demonstração
 │   └── observador.js           segundo consumidor
-└── docs/                       arquitetura, contrato, segurança, diagramas e marco-04.md
+└── docs/                       arquitetura, contrato, segurança, diagramas, marco-04.md e limitacoes.md
 ```
 
 ---

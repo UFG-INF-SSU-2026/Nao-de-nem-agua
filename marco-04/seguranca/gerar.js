@@ -10,6 +10,10 @@
  *                                       de cada identidade, nunca a senha
  *   segredos.json                       o que cada CLIENTE guarda: a propria senha
  *                                       (equivale ao provisionamento do dispositivo)
+ *   certs/servico-assinatura.key/.pub   par ECDSA P-256 do SERVICO (Marco 4): assina
+ *                                       estado, alertas e respostas para o app
+ *   certs/chaves-app.json               chave HMAC de cada identidade `app`
+ *                                       (Marco 4): o app assina pedidos e luz
  *
  * Nada disso e versionado (ver .gitignore): cada maquina gera o seu. A chave
  * privada da CA e as senhas sao segredos -- publica-los no repositorio anularia
@@ -46,6 +50,25 @@ const ARQUIVOS = {
 const ARQUIVOS_API = {
   crt: path.join(CERTS, 'api.crt'),
   key: path.join(CERTS, 'api.key')
+};
+
+/*
+ * Marco 4 -- app no broker publico (caminho B). La nao ha senha nem ACL: quem
+ * autentica e a assinatura de cada mensagem, nos DOIS sentidos.
+ *
+ *  - app -> servico: HMAC-SHA256 com uma chave PROPRIA de cada app (nunca a do
+ *    ESP32). Quem extrair a chave do APK so consegue se passar pelo app.
+ *  - servico -> app: ECDSA P-256. O app guarda so a chave PUBLICA, que confere
+ *    mas nao assina; com HMAC, a chave dentro do APK serviria para forjar o
+ *    estado do vaso.
+ *
+ * Como o resto do material, e gerado por maquina e fica fora do Git (certs/).
+ * O build do app copia a chave publica e a chave HMAC do app para o APK.
+ */
+const ARQUIVOS_ASSINATURA = {
+  servicoKey: path.join(CERTS, 'servico-assinatura.key'),
+  servicoPub: path.join(CERTS, 'servico-assinatura.pub'),
+  chavesApp: path.join(CERTS, 'chaves-app.json')
 };
 
 /* Parametros do scrypt. Lento de proposito: dificulta forca bruta se o arquivo vazar. */
@@ -229,6 +252,49 @@ function gerarCredenciais() {
   return Object.keys(segredos);
 }
 
+/* Identidades de papel `app` na ACL, com o vaso de cada uma. */
+function identidadesApp() {
+  const acl = JSON.parse(fs.readFileSync(path.join(DIR, 'acl.json'), 'utf8'));
+  return Object.entries(acl.identidades)
+    .filter(([, i]) => i.papel === 'app')
+    .map(([id, i]) => ({ id, vasoId: i.vasoId }));
+}
+
+/*
+ * Gera o par ECDSA do servico e as chaves HMAC dos apps que faltarem. Com
+ * forcar=true, regenera tudo (o app precisa ser recompilado). Devolve o que
+ * foi gerado.
+ */
+function garantirChavesAssinatura(forcar) {
+  fs.mkdirSync(CERTS, { recursive: true });
+  const geradas = [];
+  if (forcar || !fs.existsSync(ARQUIVOS_ASSINATURA.servicoKey) || !fs.existsSync(ARQUIVOS_ASSINATURA.servicoPub)) {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    fs.writeFileSync(ARQUIVOS_ASSINATURA.servicoKey, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+    fs.writeFileSync(ARQUIVOS_ASSINATURA.servicoPub, publicKey.export({ type: 'spki', format: 'pem' }));
+    geradas.push('par ECDSA do servico');
+  }
+  const atual = !forcar && fs.existsSync(ARQUIVOS_ASSINATURA.chavesApp)
+    ? JSON.parse(fs.readFileSync(ARQUIVOS_ASSINATURA.chavesApp, 'utf8'))
+    : {};
+  const apps = atual.apps || {};
+  let mudou = false;
+  for (const { id, vasoId } of identidadesApp()) {
+    if (apps[id] && apps[id].vasoId === vasoId) continue;
+    apps[id] = { vasoId, chave: crypto.randomBytes(32).toString('hex') };
+    geradas.push(`chave HMAC de ${id}`);
+    mudou = true;
+  }
+  if (mudou || !fs.existsSync(ARQUIVOS_ASSINATURA.chavesApp)) {
+    const conteudo = {
+      _comment: 'Chave HMAC-SHA256 de cada app (Marco 4). Compartilhada entre o app e o servico; gerada por maquina por `npm run seguranca`. NAO versionar.',
+      apps
+    };
+    fs.writeFileSync(ARQUIVOS_ASSINATURA.chavesApp, JSON.stringify(conteudo, null, 2) + '\n', { mode: 0o600 });
+  }
+  return geradas;
+}
+
 function materialCompleto() {
   return Object.values(ARQUIVOS).every((f) => fs.existsSync(f));
 }
@@ -261,17 +327,19 @@ function gerar(opcoes) {
   const envBanco = gerarEnvBanco();
   if (!forcar && materialCompleto()) {
     const novasIdentidades = completarCredenciais();
-    return { gerado: false, envBanco, novasIdentidades, certificadoApi: garantirCertificadoApi(hostsExtras, false) };
+    const certificadoApi = garantirCertificadoApi(hostsExtras, false);
+    return { gerado: false, envBanco, novasIdentidades, certificadoApi, assinatura: garantirChavesAssinatura(false) };
   }
   gerarCertificados(hostsExtras);
   const identidades = gerarCredenciais();
   garantirCertificadoApi(hostsExtras, true);
-  return { gerado: true, identidades, envBanco, novasIdentidades: [], certificadoApi: true };
+  const assinatura = garantirChavesAssinatura(true);
+  return { gerado: true, identidades, envBanco, novasIdentidades: [], certificadoApi: true, assinatura };
 }
 
 module.exports = {
   gerar, reemitirCertificadoBroker, garantirCertificadoApi, hashSenha,
-  ARQUIVOS, ARQUIVOS_API, ARQUIVO_ENV, materialCompleto
+  ARQUIVOS, ARQUIVOS_API, ARQUIVOS_ASSINATURA, ARQUIVO_ENV, materialCompleto
 };
 
 /* --broker-host 192.168.0.10 (pode repetir, ou separar por virgula). */
@@ -292,6 +360,9 @@ if (require.main === module) {
   if (r.novasIdentidades.length) {
     console.log(`Identidades novas na ACL, senha gerada: ${r.novasIdentidades.join(', ')} (as demais nao mudaram)`);
   }
+  if (!r.gerado && r.assinatura.length) {
+    console.log(`Chaves de assinatura do app geradas: ${r.assinatura.join(', ')}. Recompile o app.`);
+  }
   if (!r.gerado && r.certificadoApi) {
     console.log('Certificado da API de historico emitido pela CA existente: certs/api.crt (a CA e as senhas nao mudaram).');
   }
@@ -307,6 +378,8 @@ if (require.main === module) {
     console.log(`  certs/broker.crt    certificado do broker (${altNamesBroker(hostsExtras).map((n) => n.ip || n.value).join(', ')})`);
     console.log('  credenciais.json    hashes scrypt -- usado pelo broker');
     console.log('  segredos.json       senhas em claro -- usado pelos clientes');
+    console.log('  certs/servico-assinatura.*  par ECDSA do servico (o app recebe so a .pub)');
+    console.log('  certs/chaves-app.json       chave HMAC do app (broker publico)');
     console.log(`  identidades         ${r.identidades.join(', ')}`);
   }
 }

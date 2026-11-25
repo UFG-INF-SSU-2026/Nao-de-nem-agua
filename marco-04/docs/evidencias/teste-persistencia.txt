@@ -50,4 +50,3 @@ Teste de integracao da persistencia (TimescaleDB)
   ok    leitor_app NAO consegue gravar (42501 permissao negada)
 
 37 verificacoes aprovadas, 0 falhas
-saida=0

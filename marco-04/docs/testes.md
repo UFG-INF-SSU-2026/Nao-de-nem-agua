@@ -8,12 +8,12 @@ manuais (passos, esperado, observado, evidência). Este documento reúne os dois
 
 | Suíte | Comando | Tipo | Requer | Resultado | Evidência |
 |---|---|---|---|---|---|
-| Integração da fronteira | `npm run teste` | integração (processos reais, broker TLS em porta livre) | nada | **126/126** | [`teste-integracao.txt`](evidencias/teste-integracao.txt) |
-| Unitários do backend | `npm run teste:unidade` | unitário (`node:test`) | nada | **40/40** | [`teste-unidade.txt`](evidencias/teste-unidade.txt) |
+| Integração da fronteira | `npm run teste` | integração (processos reais, broker TLS em porta livre) | nada | **129/129** | [`teste-integracao.txt`](evidencias/teste-integracao.txt) |
+| Unitários do backend | `npm run teste:unidade` | unitário (`node:test`) | nada | **48/48** | [`teste-unidade.txt`](evidencias/teste-unidade.txt) |
 | Persistência | `npm run teste:persistencia` | integração com TimescaleDB real | banco | **37/37** | [`teste-persistencia.txt`](evidencias/teste-persistencia.txt) |
 | API de histórico | `npm run teste:api` | integração HTTPS + banco | banco | **25/25** | [`teste-api.txt`](evidencias/teste-api.txt) |
-| App Android | `gradlew testDebugUnitTest` (em `app-android`) | unitário (JUnit) | JDK do Android Studio | **23/23** | [`teste-app.txt`](evidencias/teste-app.txt) |
-| **Total** | | | | **251 verificações** | |
+| App Android | `gradlew testDebugUnitTest` (em `app-android`) | unitário (JUnit) | JDK do Android Studio | **30/30** | [`teste-app.txt`](evidencias/teste-app.txt) |
+| **Total** | | | | **269 verificações** | |
 
 Todos os comandos rodam na pasta `marco-04` (o do app, em `marco-04/app-android`,
 com `JAVA_HOME` no JDK do Android Studio — ver [`implantacao.md`](implantacao.md), §6).
@@ -25,6 +25,7 @@ com `JAVA_HOME` no JDK do Android Studio — ver [`implantacao.md`](implantacao.
 | Contrato e validação | `contrato/index.js`, `contrato/v1/*.schema.json` | integração §4, §14, §19, §20; unitários (LeituraLuz); app `ContratosTest`, `HistoricoTest` |
 | Broker: TLS, senha, ACL | `broker-local/broker.js`, `seguranca/` | integração §9–§11, §19, §20; `teste:api` §1–§3 |
 | HMAC (dispositivo ↔ serviço) | `seguranca/index.js`, firmware/simulador | integração §12, §13 |
+| Assinatura das mensagens do app (HMAC do app, ECDSA do serviço; broker público) | `seguranca/index.js`, `contrato/index.js` (`abrirMensagemDoApp`), `conexao/Assinaturas.kt` | integração §19 (estado e respostas com ECDSA válida; pedido assinado atendido; HMAC de outra chave sem resposta); unitários `assinatura-app.test.js` (8); app `AssinaturasTest` (vetores gerados pelo Node) |
 | Estado, validade, decisão de irrigação | `consumidor-servico/src/estado.js`, `decisao.js` | integração §1–§7; unitários (restauração) |
 | Alertas | `consumidor-servico/src/alertas.js`, `notificador/` | integração §8, §18 |
 | R1 ar/umidificador | `ambiente.js` | integração §15; unitários (restauração) |
@@ -35,7 +36,7 @@ com `JAVA_HOME` no JDK do Android Studio — ver [`implantacao.md`](implantacao.
 | Pedido do app (reconhecer falha) e estado retido | `main.js` (`tratarSolicitacaoApp`, `publicarEstadoVaso`) | integração §19 |
 | Persistência (fila, snapshot, perfil) | `persistencia/` | `teste:persistencia`; unitários `fila`, `perfil`, `restauracao` |
 | API de histórico | `api-historico/` | `teste:api` (25); unitários `api.test.js` (6) |
-| App: conexão e diagnóstico de falhas | `conexao/ConexaoMqtt.kt`, `HistoricoApi.kt` | app `ContratosTest` (classificação de falhas, inclusive o caso do `adb reverse`) |
+| App: conexão e diagnóstico de falhas | `conexao/ConexaoMqtt.kt`, `HistoricoApi.kt` | app `ContratosTest` (classificação de falhas, inclusive o caso do `adb reverse`); `EnderecosTest` (broker público: IPv4 antes do IPv6) |
 | App: pedido, rótulos, luz, histórico | `ui/Pedido.kt`, `Rotulos.kt`, `sensor/SensorLuz.kt`, `contrato/Historico.kt` | app `PedidoTest`, `LuzTest`, `HistoricoTest` |
 | Telas do app | `ui/*Tela.kt` | **manual**, no aparelho (§4) |
 
@@ -75,3 +76,4 @@ evidência** (capturas em [`evidencias/app/`](evidencias/app/)):
 | Fase 5, aparelho | “certificado não é da CA” com a API **desligada** | pelo `adb reverse`, servidor fora = handshake TLS encerrado | `classificarRede()` (app, MQTT e API); `ContratosTest` |
 | Fase 4, teste | duas verificações falhavam | cores ANSI no log entre rótulo e mensagem | o teste remove as cores antes de comparar |
 | Fase 3, execução concorrente | 1 falha na seção 3 (deduplicação) | máquina carregada pela compilação do app (tempo) | repetida sem carga: passou; registrado |
+| Broker público, aparelho (rede 5G) | app não conectava ao HiveMQ: `ECONNREFUSED` | o DNS devolve o IPv6 do HiveMQ primeiro, ele recusa a porta 8883, e o Paho só tenta o primeiro endereço | o app tenta os IPs com IPv4 primeiro, conferindo o certificado pelo nome; `EnderecosTest` |

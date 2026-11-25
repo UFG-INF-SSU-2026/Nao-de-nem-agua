@@ -283,6 +283,46 @@ function abrirMensagemDeDispositivo(cfg, topico, buffer) {
   return { ok: true, payload };
 }
 
+/*
+ * Marco 4: desserializa e autentica uma mensagem do APP (SolicitacaoApp,
+ * LeituraLuz).
+ *
+ * Broker do grupo (caminho A): quem garante a origem e o broker -- so a
+ * identidade `app` do vaso publica nesses topicos (acl.json). A assinatura e
+ * opcional, mas se vier tem de conferir.
+ * Broker publico (caminho B): nao ha ACL; sem HMAC valido do app a mensagem e
+ * recusada, como a telemetria de um dispositivo.
+ */
+function abrirMensagemDoApp(cfg, topico, buffer) {
+  const texto = buffer.toString('utf8');
+  const bruto = desserializar(buffer);
+  if (!bruto.ok) return bruto;
+  const payload = bruto.payload;
+  const exigir = cfg.seguranca.exigirAssinatura && !brokerLocal(cfg.mqtt.url);
+  const assinado = payload && typeof payload === 'object' && 'sig' in payload;
+  if (!assinado) {
+    return exigir ? { ok: false, motivo: 'ASSINATURA_AUSENTE', detalhe: 'broker publico: o app precisa assinar' } : { ok: true, payload };
+  }
+  const app = typeof payload.deviceId === 'string' ? seguranca.chaveApp(payload.deviceId) : null;
+  if (!app) return { ok: false, motivo: 'APP_DESCONHECIDO', detalhe: `deviceId=${payload.deviceId}` };
+  if (!topico.includes(`/vaso/${app.vasoId}/`)) {
+    return { ok: false, motivo: 'VASO_NAO_PERTENCE_AO_APP', detalhe: `${payload.deviceId} nao e do vaso deste topico` };
+  }
+  const sig = seguranca.verificarAssinatura(app.chave, topico, texto);
+  if (!sig.ok) return { ok: false, motivo: sig.motivo, detalhe: sig.detalhe ? sig.detalhe.replace('do dispositivo', 'do app') : `deviceId=${payload.deviceId}` };
+  return { ok: true, payload };
+}
+
+/*
+ * Marco 4: serializa uma mensagem do servico para o app (EstadoVaso,
+ * AlertaCuidado, RespostaApp) ja assinada com ECDSA. Assinada nos dois
+ * caminhos: no broker do grupo e defesa em profundidade; no publico, e o que
+ * impede um terceiro de publicar um estado falso que o app mostraria.
+ */
+function textoAssinadoParaApp(topico, objeto) {
+  return seguranca.assinarServico(topico, JSON.stringify(objeto));
+}
+
 function dispositivoDe(deviceId) {
   return typeof deviceId === 'string' ? seguranca.dispositivo(deviceId) : null;
 }
@@ -295,5 +335,7 @@ module.exports = {
   desserializar,
   conectar,
   brokerLocal,
-  abrirMensagemDeDispositivo
+  abrirMensagemDeDispositivo,
+  abrirMensagemDoApp,
+  textoAssinadoParaApp
 };

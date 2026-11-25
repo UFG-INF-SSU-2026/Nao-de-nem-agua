@@ -83,11 +83,12 @@ private fun App(vm: AppViewModel) {
                 val historico by vm.historico.collectAsStateWithLifecycle()
                 val periodo by vm.periodoHoras.collectAsStateWithLifecycle()
                 val config by vm.config.collectAsStateWithLifecycle()
+                val naoAutenticadas by vm.naoAutenticadas.collectAsStateWithLifecycle()
                 PainelTela(
                     DadosPainel(
                         conexao, estado, dispositivo, alertas, pedido, negadas, rejeitadas,
                         DadosLuz(vm.sensorLuzDisponivel, vm.nomeSensorLuz, medirLuz, luzLocal),
-                        historico, periodo, config
+                        historico, periodo, config, naoAutenticadas
                     ),
                     AcoesPainel(vm::tentarDeNovo, vm::sair, vm::reconhecerFalha, vm::dispensarPedido, vm::alternarMedicaoLuz,
                         vm::escolherPeriodo, vm::carregarHistorico

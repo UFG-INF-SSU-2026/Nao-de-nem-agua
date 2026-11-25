@@ -102,13 +102,20 @@ segundos, o app mostra **falha de comunicação** (o broker pode estar fora).
 |---|---|
 | Canal | **MQTT sobre TLS** (`mqtts://`, 8883). O app embute o `ca.crt` da CA do grupo (público) e confere o nome do servidor. |
 | Identidade | Usuário/senha próprios: `app-vaso-01`. `clientId` precisa começar por `app-vaso-01`. |
-| Autorização | Papel **`app`** em [`acl.json`](../seguranca/acl.json): só o **próprio vaso**; **publica apenas `app/solicitacao`**; não assina `command/*`. O broker confere que o `deviceId` do pedido é o da identidade autenticada. |
-| Credenciais administrativas | **Fora do app.** A senha do `servico-irrigacao`, a chave da CA, as chaves HMAC e as senhas do banco ficam na máquina do serviço. O app só tem a sua senha, digitada na tela de login (não vai no código nem no Git). |
+| Autorização | Papel **`app`** em [`acl.json`](../seguranca/acl.json): só o **próprio vaso**; **publica apenas `app/solicitacao` e `telemetry/light`** (a luz do celular); não assina nem publica `command/*`. O broker confere que o `deviceId` do pedido e da luz é o da identidade autenticada. |
+| Credenciais administrativas | **Fora do app.** A senha do `servico-irrigacao`, a chave da CA, as chaves HMAC dos dispositivos, a chave privada de assinatura do serviço e as senhas do banco ficam na máquina do serviço. O app só tem a sua senha, digitada na tela de login (não vai no código nem no Git), a **chave HMAC própria do app** e a **chave pública** do serviço. |
 
-Por que o app não usa HMAC: o HMAC existe para o caminho B (broker público, sem
-ACL). O app só usa o caminho A, onde o broker autentica e autoriza cada
-publicação. Uma chave HMAC dentro do APK também não seria segredo — qualquer um
-pode extrair um APK.
+**Assinatura das mensagens do app.** No caminho A (broker do grupo), quem
+garante a origem é o broker: TLS, senha e ACL. No caminho B (broker público,
+sem senha nem ACL), as mensagens são assinadas **nos dois sentidos**: o app
+assina `SolicitacaoApp` e `LeituraLuz` com uma **chave HMAC própria** (nunca a
+do ESP32), e o serviço assina `EstadoVaso`, `AlertaCuidado` e `RespostaApp`
+com **ECDSA P-256**; o APK leva só a chave pública, que confere mas não assina.
+No caminho A as assinaturas também vão e são conferidas quando presentes; no B
+são obrigatórias. A chave HMAC do app pode ser extraída do APK (limitação
+declarada): quem a extrair se passa pelo app daquele vaso, não pelo ESP32 nem
+pelo serviço. Detalhes em [`seguranca.md`, §2.5](seguranca.md#25-o-app-no-broker-público--hmac-do-app-e-ecdsa-do-serviço-marco-4)
+([`conexao/Assinaturas.kt`](../app-android/app/src/main/java/br/ufg/naodenemagua/conexao/Assinaturas.kt)).
 
 ## 3. Conectar o celular ao broker
 
@@ -138,7 +145,7 @@ muda de rede para rede.
 
 ## 4. Testes
 
-Seção **19** de `npm run teste` (21 verificações, o teste faz o papel do app):
+Seção **19** de `npm run teste` (24 verificações, o teste faz o papel do app):
 
 - identidade própria, TLS + senha;
 - `EstadoVaso` **retido** chega ao assinar, dentro do contrato, e é republicado no pulso;
@@ -165,12 +172,19 @@ Estrutura:
 
 ```
 app-android/app/src/main/java/br/ufg/naodenemagua/
+├── MainActivity.kt
 ├── conexao/TlsDoGrupo.kt     confia SÓ na CA do grupo (res/raw, copiada no build)
 ├── conexao/ConexaoMqtt.kt    cliente MQTT/TLS, estados de conexão, tradução das falhas
 ├── conexao/Topicos.kt        tópicos do vaso (iguais a contrato/index.js)
+├── conexao/Assinaturas.kt    HMAC do app e verificação ECDSA do serviço (broker público)
+├── conexao/HistoricoApi.kt   cliente HTTPS da API de histórico (§8)
 ├── contrato/Contratos.kt     leitura dos contratos v1; fora do contrato -> descartado
+├── contrato/Historico.kt     respostas HistoricoVaso / HistoricoAlertas
 ├── dados/Preferencias.kt     dados de conexão no aparelho
-└── ui/                       AppViewModel, LoginTela, PainelTela
+├── sensor/SensorLuz.kt       sensor de luz do celular -> LeituraLuz (§7)
+└── ui/                       AppViewModel; telas Abertura, BoasVindas, Login, Painel
+                              (aba Vaso), Alertas, Historico e Ajustes (aba Conexão);
+                              Pedido, Rotulos, Componentes, Icones, theme/
 ```
 
 **A CA entra no build, não no Git.** A tarefa `copiarCaDoGrupo`
@@ -209,7 +223,7 @@ No celular: **Opções do desenvolvedor → Depuração USB** ligada. Com broker
 serviço e simulador rodando, faça o `adb reverse` (§3) e entre com
 `app-vaso-01` e a senha de `seguranca/segredos.json`.
 
-Testes unitários do app (contratos e tradução das falhas, 7 testes):
+Testes unitários do app (contratos, tradução das falhas, endereços, pedido, luz, histórico e assinaturas; 30 testes):
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"; cd app-android; .\gradlew.bat testDebugUnitTest
@@ -220,6 +234,14 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"; cd app-android; 
 Galaxy A16 (SM-A166M, Android 16), cabo USB com `adb reverse tcp:8883 tcp:8883`,
 broker + serviço + simulador locais. Capturas em
 [`evidencias/app/`](evidencias/app/).
+
+> **Todas as capturas foram refeitas em 25/11** com o APK de entrega (interface
+> final), no mesmo aparelho e com a mesma montagem. Os passos e resultados das
+> tabelas são os de 24/11; nas capturas aparecem os valores da nova execução
+> (por exemplo: solo 20% → 35% no passo 10, luz com média de 207 lux no passo 16
+> e sala às escuras no cartão de luz). A `03-conectado.png` agora mostra a aba
+> **Conexão** (broker, identidade, tempo conectado e camadas de segurança), que
+> entrou na versão final do app.
 
 | # | Passo | Esperado | Observado |
 |---|---|---|---|
@@ -240,7 +262,7 @@ sem fluxo, `s` = solo seco, `r` = reservatório de água crítico, `w` = reabast
 | 7 | Abrir o app conectado | abas **Vaso** e **Alertas**; cartões de solo, ar, reservatórios, nutrientes e dispositivo | ok — `06-painel-vaso.png`, `14-reservatorios-nutrientes.png` |
 | 8 | `f` + `s` no simulador | serviço irriga, não vê efeito, bloqueia e emite `FALHA_IRRIGACAO`; app mostra o cartão vermelho com **Reconhecer falha** e o contador de alertas | `VERIFICACAO ... SEM efeito (bomba_sem_fluxo)` em ~13 s; cartão e contador ok — `08-falha-pendente.png` |
 | 9 | Aba Alertas | alertas por severidade, idade e validade (`ttlMs`) | Crítico/Atenção/Informação com “vale por mais X s” — `07-alertas.png` |
-| 10 | `f` (bomba consertada) e tocar **Reconhecer falha** | `SolicitacaoApp` → serviço libera → decide → **PULSO_IRRIGACAO**; app mostra o resultado | serviço: `falhas reconhecidas (app:app-vaso-01:<requestId>)`, `DECISAO PULSO_IRRIGACAO`, `APP ... EXECUTADA`; app: “Falha reconhecida — Irrigação automática liberada”, bomba “Irrigando”, solo 20% → 28% — `09-falha-reconhecida.png` |
+| 10 | `f` (bomba consertada) e tocar **Reconhecer falha** | `SolicitacaoApp` → serviço libera → decide → **PULSO_IRRIGACAO**; app mostra o resultado | serviço: `falhas reconhecidas (app:app-vaso-01:<requestId>)`, `DECISAO PULSO_IRRIGACAO`, `APP ... EXECUTADA`; app: “Falha reconhecida — Irrigação automática liberada”, bomba “Irrigando”, solo 20% → 28% (refeito em 25/11: 20% → 35%) — `09-falha-reconhecida.png` |
 | 11 | Nova falha; **parar o serviço**; tocar Reconhecer | “Aguardando resposta do serviço…” com o botão desabilitado; depois de 8 s, “O serviço não respondeu” + **Tentar de novo** | ok — `10-aguardando-servico.png`, `11-servico-nao-respondeu.png` |
 | 12 | Religar o serviço (em memória) e **Tentar de novo** | o MESMO `requestId` chega; como o serviço reiniciou sem banco e perdeu o bloqueio, responde `NADA_A_RECONHECER` | ok — `12-retry-nada-a-reconhecer.png`. Com o banco ligado, o bloqueio é restaurado do snapshot ([persistencia.md](persistencia.md)) e a resposta seria `EXECUTADA` |
 | 13 | Falha pendente **e** `r` (reservatório crítico) | o app separa a falha que se reconhece do bloqueio que não se resolve reconhecendo | ok — `13-falha-e-reservatorio-critico.png` (usa `falhasPendentes`, abaixo) |
@@ -282,7 +304,7 @@ não só como tela.
 | Elemento | Como | Parâmetro (`config.json`, seção `luz`) |
 |---|---|---|
 | Contrato | `LeituraLuz` v1; `lux` obrigatório se `valid`; 0–200 000 lux | — |
-| Origem | sem HMAC; o broker garante: só o papel `app` do vaso publica em `telemetry/light`, com o próprio `deviceId` | `seguranca/acl.json` |
+| Origem | no broker do grupo, o broker garante: só o papel `app` do vaso publica em `telemetry/light`, com o próprio `deviceId`; no broker público, HMAC do app obrigatório (§2) | `seguranca/acl.json` |
 | Deduplicação | mesmo `eventId` (retry do QoS 1) não conta duas vezes | — |
 | **Atraso** | lida mais de `validadeMs` depois de medida → vai ao banco como `atrasada`, **não decide** | `validadeMs` = 30 s |
 | Média | móvel, de `amostrasMedia` leituras | 3 (= 15 s) |
@@ -326,7 +348,7 @@ banco** e simulador locais. Evidências: [`evidencias/luz-sensor-celular.txt`](e
 | 14 | Abrir o app conectado | cartão **Luz (sensor do celular)** com o lux ao vivo e as publicações a cada 5 s | 134–150 lux; “N leituras publicadas · última há 1 s”; sensor `TCS3701 Light` — `15-sensor-luz.png` |
 | 15 | Primeira versão do app | — | **bug encontrado pelo contrato:** o `Instant` do Android tem microssegundos e o serviço recusou as leituras (`LeituraLuz SCHEMA_INVALIDO: /measuredAt must match format "utc-date-time"`), sem cair. Corrigido no app (`Contratos.utc()`, truncando em milissegundos), com teste |
 | 16 | 15 s de leituras abaixo de 300 lux | `SEM_MEDICAO → POUCA_LUZ` só depois do tempo mínimo; alerta `LUZ_INSUFICIENTE` | `luz SEM_MEDICAO -> POUCA_LUZ (media_sustentada_15s; media 149 lux)`; alerta no app — `16-alerta-pouca-luz.png` |
-| 17 | Consultar o banco | leituras, alerta e transição gravados | `telemetria_luz`: 10 leituras de `app-vaso-01`, média 146 lux, nenhuma atrasada; `alertas`: `LUZ_INSUFICIENTE`; `transicoes`: `luz SEM_MEDICAO → POUCA_LUZ` |
+| 17 | Consultar o banco | leituras, alerta e transição gravados | `telemetria_luz`: 22 leituras de `app-vaso-01`, média 145 lux, nenhuma atrasada; `alertas`: `LUZ_INSUFICIENTE`; `transicoes`: `luz SEM_MEDICAO → POUCA_LUZ` |
 | 18 | Botão Home (app sai da tela) | o app para de medir; 30 s depois o serviço marca `SEM_MEDICAO` | última leitura 21:06:31 → `POUCA_LUZ -> SEM_MEDICAO (validade_expirada)` às 21:07:01 |
 | 19 | Voltar ao app | volta a medir (sessão nova no `eventId`) e reclassifica depois do tempo mínimo | sessão `cc81bd19`; `SEM_MEDICAO -> POUCA_LUZ` de novo após 15 s |
 
@@ -384,7 +406,9 @@ resultado. Pelo cabo, `adb reverse tcp:8443 tcp:8443`.
   401 sem credencial / senha errada / usuário inexistente; 403 para notificador,
   gateway e outro vaso; 400 para SQL no `vasoId` e período inválido; 405 e 404;
   séries exatas com as exclusões; resumo; alertas na ordem e no período;
-  limite; 429 depois de 5 senhas erradas e bloqueio mesmo com a senha certa —
+  limite; 429 depois de 5 senhas erradas (o teste sobe a API com
+  `API_TENTATIVAS_MAX=5` para ser rápido; o padrão do `config.json` é 10) e
+  bloqueio mesmo com a senha certa —
   [evidência](evidencias/teste-api.txt).
 - `npm run teste:unidade`: +6 (`api-historico/test/api.test.js`): parâmetros,
   `vasoId` malicioso, Basic, autorização, limite de tentativas.

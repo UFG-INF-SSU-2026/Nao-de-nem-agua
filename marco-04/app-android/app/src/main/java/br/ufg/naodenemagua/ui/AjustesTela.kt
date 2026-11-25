@@ -50,6 +50,7 @@ fun AjustesTela(dados: DadosPainel, acoes: AcoesPainel, agora: Long, modifier: M
     ) {
         CartaoSecao("Broker", Icones.Wifi, acao = { PilulaConexao(conexao) }) {
             if (config != null) {
+                Linha("Broker", if (config.publico) "Público (Wokwi)" else "Do grupo", icone = Icones.Wifi)
                 Linha("Servidor", "${config.host}:${config.porta}", icone = Icones.Servidor)
                 Linha("Usuário", config.usuario, icone = Icones.Usuario)
                 Linha("Vaso", config.vasoId, icone = Icones.Vaso)
@@ -69,8 +70,15 @@ fun AjustesTela(dados: DadosPainel, acoes: AcoesPainel, agora: Long, modifier: M
 
         CartaoSecao("Segurança", Icones.Escudo, sinal = Sinal.OK) {
             ItemSeguranca(Icones.Cadeado, "MQTT sobre TLS", "Tudo o que sai e chega do celular vai cifrado.")
-            ItemSeguranca(Icones.Escudo, "Só a CA do grupo", "O certificado do broker é conferido contra a CA própria do projeto, inclusive o nome do servidor.")
-            ItemSeguranca(Icones.Usuario, "Identidade própria", "Usuário e senha deste app; o broker só deixa ler e publicar nos tópicos do vaso.")
+            if (dados.publico) {
+                ItemSeguranca(Icones.Escudo, "Certificado público conferido", "O broker público é verificado pelas autoridades do Android, inclusive o nome do servidor. Nenhuma senha é enviada a ele.")
+                ItemSeguranca(Icones.Certo, "Serviço assinado (ECDSA)", "Estado, alertas e respostas só aparecem se tiverem a assinatura do serviço. O app guarda só a chave pública: confere, mas não consegue forjar.")
+                ItemSeguranca(Icones.Mao, "Pedidos assinados (HMAC)", "Pedidos e leituras de luz saem com a chave própria deste app — nunca a do ESP32. Sem ela, o serviço recusa.")
+            } else {
+                ItemSeguranca(Icones.Escudo, "Só a CA do grupo", "O certificado do broker é conferido contra a CA própria do projeto, inclusive o nome do servidor.")
+                ItemSeguranca(Icones.Usuario, "Identidade própria", "Usuário e senha deste app; o broker só deixa ler e publicar nos tópicos do vaso.")
+                ItemSeguranca(Icones.Certo, "Mensagens assinadas", "Como defesa a mais, o app confere a assinatura do serviço e assina o que publica.")
+            }
         }
 
         CartaoSecao(
@@ -88,8 +96,12 @@ fun AjustesTela(dados: DadosPainel, acoes: AcoesPainel, agora: Long, modifier: M
 
         CartaoSecao(
             "Diagnóstico", Icones.Info,
-            sinal = if (dados.assinaturasNegadas.isNotEmpty()) Sinal.ERRO else Sinal.NEUTRO
+            sinal = if (dados.assinaturasNegadas.isNotEmpty() || dados.naoAutenticadas > 0) Sinal.ERRO else Sinal.NEUTRO
         ) {
+            Linha(
+                "Sem assinatura válida do serviço", "${dados.naoAutenticadas}",
+                if (dados.naoAutenticadas > 0) VERMELHO else null, Icones.Escudo
+            )
             Linha(
                 "Mensagens fora do contrato", "${dados.rejeitadas}",
                 if (dados.rejeitadas > 0) AMARELO else null, Icones.Alerta

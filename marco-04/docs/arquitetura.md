@@ -23,7 +23,7 @@ origem das decisões; aplicativo e Alexa são representados pelo terminal.
 
 **Projeto:** *Não dê nem água* — cuidado assistido de plantas de interior
 **Disciplina:** Software para Sistemas Ubíquos — UFG
-**Integrantes:** Matheus Vieira Mendes Pacheco, Davi Duarte Neco, Bárbara Nogueira
+**Integrantes:** Matheus Vieira Mendes Pacheco, Davi Duarte Neco
 
 Este documento registra o planejamento da fronteira de comunicação: componentes
 envolvidos, fluxo, responsabilidades, mecanismo escolhido e condições de falha
@@ -177,9 +177,10 @@ Justificativa ligada a requisito, não a preferência:
 
 A prova prática está em `scripts/observador.js`: um segundo consumidor que pode
 ser ligado e desligado a qualquer momento sem que produtor ou serviço saibam que
-ele existe. É exatamente o lugar que o **app Android** ocupará na evolução
+ele existe. É exatamente o lugar que o **app Android** ocuparia na evolução
 prevista — mais um assinante dos mesmos tópicos, sem alteração de nenhum dos dois
-componentes atuais.
+componentes atuais. (Registro histórico: no Marco 4 o app entrou assim — ver
+[`aplicativo.md`](aplicativo.md).)
 
 Uma API HTTP resolveria a consulta, mas exigiria que o dispositivo conhecesse o
 endereço do serviço e que o serviço estivesse disponível no instante da medição —
@@ -187,7 +188,8 @@ os dois acoplamentos que este projeto precisa evitar.
 
 ### 5. Quem faz o quê
 
-Cada integrante mantém no Marco 2 o perfil que negociou no Marco 1.
+Cada integrante mantém no Marco 2 o perfil que negociou no Marco 1. (Registro histórico: a Bárbara
+Nogueira participou do grupo até o Marco 3 e não integra mais a equipe.)
 
 | Integrante | Responsabilidade | Arquivos |
 |---|---|---|
@@ -357,8 +359,10 @@ fronteira continua íntegra.
 
 ## 11. Limitações declaradas
 
-1. **Não há aquisição física.** Potenciômetro no ESP32, teclado no simulador.
-   Nenhuma umidade real foi medida.
+1. **Não há aquisição física no vaso.** Até o Marco 3, potenciômetro no ESP32 e
+   teclado no simulador; no Marco 4, sonda de solo por custom chip e DHT22 e
+   HC-SR04 por slider no Wokwi ([`marco-04.md`, §8](marco-04.md#8-limitações-declaradas)).
+   A única medição real é a luz do sensor do celular.
 2. **Sem NTP.** `eventTimeMs` é tempo desde o boot, não instante absoluto.
 3. ~~**Sem TLS e sem autenticação.**~~ **Resolvido no Marco 3:** TLS nos dois
    caminhos, usuário/senha e ACL no broker local, e HMAC por mensagem nos dois
@@ -368,8 +372,11 @@ fronteira continua íntegra.
    estado de um vaso só.
 5. ~~**Estado em memória.**~~ **Resolvido no Marco 4:** histórico em TimescaleDB
    e estado das regras restaurado na partida. Ver [`persistencia.md`](persistencia.md).
-6. **O LED representa a bomba.** Não há água nem realimentação física.
-7. **Alexa, tomadas inteligentes e aplicativo** permanecem fora deste marco.
+6. **Relés e LEDs representam os atuadores.** No Marco 4, bomba de água, bomba
+   de fertilizante e umidificador são relés no Wokwi; não há água de verdade, e
+   a realimentação do efeito vem de sensores também simulados.
+7. **Alexa e tomadas inteligentes** permanecem fora do projeto (o aplicativo
+   entrou no Marco 4 — item 8).
 8. ~~**O Android é evolução prevista, não entrega.**~~ **Resolvido no Marco 4:**
    o app entrou como segundo assinante e segundo produtor, sem mudar o produtor
    original. Ver [`aplicativo.md`](aplicativo.md).

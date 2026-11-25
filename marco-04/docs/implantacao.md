@@ -174,11 +174,11 @@ para o app.
 
 | Comando | O que verifica | Requer | Resultado de referência |
 |---|---|---|---|
-| `npm run teste` | fronteira, contrato, alertas, segurança (TLS, senha, ACL, HMAC), regras R1–R5, app (estado, pedido, ACL) e luz | nada (sobe tudo em portas livres, em memória) | 126/126, ~4 min |
-| `npm run teste:unidade` | fila de gravação, perfil, restauração, R5, API (sem rede nem banco) | nada | 40/40 |
+| `npm run teste` | fronteira, contrato, alertas, segurança (TLS, senha, ACL, HMAC), regras R1–R5, app (estado, pedido, ACL) e luz | nada (sobe tudo em portas livres, em memória) | 129/129, ~4 min |
+| `npm run teste:unidade` | fila de gravação, perfil, restauração, R5, assinaturas do app, API (sem rede nem banco) | nada | 48/48 |
 | `npm run teste:persistencia` | gravação, SIGKILL e restauração, queda do banco, perfil, menor privilégio | banco | 37/37, ~1 min (para e religa o contêiner) |
 | `npm run teste:api` | TLS, identidade, autorização, entrada, dados e força bruta da API | banco | 25/25 |
-| `gradlew testDebugUnitTest` (em `app-android`) | contratos, falhas de rede, pedido, luz e histórico no app | JDK do Android Studio | 23/23 |
+| `gradlew testDebugUnitTest` (em `app-android`) | contratos, falhas de rede, endereços, pedido, luz, histórico e assinaturas no app | JDK do Android Studio | 30/30 |
 
 Detalhes e relação com os requisitos em [`testes.md`](testes.md); saídas em
 [`evidencias/`](evidencias/).

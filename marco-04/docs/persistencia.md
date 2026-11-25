@@ -24,7 +24,7 @@ mesmos para qualquer planta (limitação 5). As duas foram resolvidas.
   segundo armazenamento para o estado e o cadastro.
 - **Papéis e permissões** do PostgreSQL dão menor privilégio sem código nosso.
 - Custo: passa a exigir **Docker**. Mitigado: `PERSISTENCIA_HABILITADA=0` roda
-  tudo em memória como antes, e `npm run teste` (95 verificações) não depende
+  tudo em memória como antes, e `npm run teste` (129 verificações) não depende
   do banco.
 
 ## 2. Implantação
@@ -223,7 +223,7 @@ simulada do projeto — não recomendação agronômica): `jiboia` (= padrão),
 |---|---|---|
 | `npm run teste:unidade` | `persistencia/test/`: fila (queda, volta, limite, linha ruim, snapshot), perfil (precedência, schema, coerência, aplicação em lugar), restauração de cada regra | 26/26 — [`evidencias/teste-unidade.txt`](evidencias/teste-unidade.txt) |
 | `npm run teste:persistencia` | `scripts/teste-persistencia.js`, com broker e serviço reais e o banco `naodenemagua_teste` (abaixo) | 37/37 — [`evidencias/teste-persistencia.txt`](evidencias/teste-persistencia.txt) |
-| `npm run teste` | regressão do Marco 2–4 com `PERSISTENCIA_HABILITADA=0` | 95/95 |
+| `npm run teste` | regressão do Marco 2–4 com `PERSISTENCIA_HABILITADA=0` | 129/129 — [`evidencias/teste-integracao.txt`](evidencias/teste-integracao.txt) |
 
 Cenários do `teste:persistencia` (relacionados ao que o PDF pede em
 "Persistência: gravação, recuperação e preservação após reiniciar o componente

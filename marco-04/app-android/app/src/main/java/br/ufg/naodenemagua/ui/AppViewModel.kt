@@ -3,7 +3,10 @@ package br.ufg.naodenemagua.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import br.ufg.naodenemagua.conexao.Assinaturas
+import br.ufg.naodenemagua.conexao.Autenticidade
 import br.ufg.naodenemagua.conexao.ConexaoMqtt
+import br.ufg.naodenemagua.conexao.MaterialAssinatura
 import br.ufg.naodenemagua.conexao.ConfigConexao
 import br.ufg.naodenemagua.conexao.EstadoConexao
 import br.ufg.naodenemagua.conexao.Mensagem
@@ -71,6 +74,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _rejeitadas = MutableStateFlow(0)
     val rejeitadas: StateFlow<Int> = _rejeitadas.asStateFlow()
 
+    /**
+     * Mensagens descartadas por NAO terem a assinatura do servico: invalida em
+     * qualquer broker, ou ausente no broker publico. No publico, um numero
+     * crescendo aqui e alguem publicando nos topicos do vaso.
+     */
+    private val _naoAutenticadas = MutableStateFlow(0)
+    val naoAutenticadas: StateFlow<Int> = _naoAutenticadas.asStateFlow()
+
+    /** Chave publica do servico e chave HMAC do app, embutidas no APK pelo build. */
+    private val material: MaterialAssinatura? by lazy { runCatching { MaterialAssinatura.carregar(app) }.getOrNull() }
+
     /** Alertas desta sessao, mais novo primeiro, sem duplicados (eventId). */
     private val _alertas = MutableStateFlow<List<AlertaRecebido>>(emptyList())
     val alertas: StateFlow<List<AlertaRecebido>> = _alertas.asStateFlow()
@@ -122,6 +136,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Busca series e alertas; uma carga por vez (a nova cancela a anterior). */
     fun carregarHistorico() {
         val config = configAtual ?: return
+        if (config.publico) {
+            // A API e do grupo e pede a senha do app, que nao vai para o broker publico.
+            _historico.value = EstadoHistorico.Indisponivel
+            return
+        }
         val horas = _periodoHoras.value
         carga?.cancel()
         _historico.value = EstadoHistorico.Carregando(horas)
@@ -198,7 +217,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 janelaMs = INTERVALO_LUZ_MS,
                 sensor = sensorLuz.nome
             )
-            val erro = withContext(Dispatchers.IO) { conexao.publicar(conexao.topicos.luz, texto) }
+            val assinado = paraPublicar(conexao.topicos.luz, texto)
+            if (assinado == null) {
+                _luzLocal.value = _luzLocal.value.copy(aviso = SEM_CHAVE)
+                continue
+            }
+            val erro = withContext(Dispatchers.IO) { conexao.publicar(conexao.topicos.luz, assinado) }
             _luzLocal.value = if (erro == null) {
                 _luzLocal.value.copy(
                     publicadas = _luzLocal.value.publicadas + 1,
@@ -217,8 +241,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val salva = preferencias.ler()
             when {
                 !preferencias.boasVindasVista() -> _tela.value = Tela.BoasVindas
-                // Senha lembrada: entra direto, mostrando "conectando".
-                salva.senha.isNotEmpty() -> iniciar(salva)
+                // Senha lembrada (ou broker publico com "lembrar"): entra direto.
+                preferencias.entrarDireto(salva) -> iniciar(salva)
                 else -> _tela.value = Tela.Login(salva)
             }
         }
@@ -261,9 +285,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _alertas.value = emptyList()
         _pedido.value = null
         _historico.value = EstadoHistorico.Ocioso
+        _naoAutenticadas.value = 0
         _tela.value = Tela.Painel
         val conexao = withContext(Dispatchers.IO) {
-            ConexaoMqtt(config, TlsDoGrupo.fabricaDeSockets(getApplication()))
+            ConexaoMqtt(config, TlsDoGrupo.fabricaPara(getApplication(), config.modo))
         }
         coleta = viewModelScope.launch { conexao.mensagens.collect(::tratar) }
         conexaoAtual.value = conexao
@@ -273,11 +298,66 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun tratar(m: Mensagem) {
         val t = conexaoAtual.value?.topicos ?: return
+        val publico = configAtual?.publico == true
         when {
-            m.topico == t.estado -> Contratos.estadoVaso(m.texto)?.let { _estadoVaso.value = it } ?: rejeitar()
-            m.topico == t.heartbeat -> Contratos.conectividade(m.texto)?.let { _dispositivo.value = it } ?: rejeitar()
-            m.topico == t.resposta -> Contratos.resposta(m.texto)?.let(::tratarResposta) ?: rejeitar()
-            m.topico.startsWith(t.base + "/alert/") -> Contratos.alerta(m.texto)?.let(::guardarAlerta) ?: rejeitar()
+            m.topico == t.estado -> if (doServico(m, publico)) {
+                Contratos.estadoVaso(m.texto)?.let(::aceitarEstado) ?: rejeitar()
+            }
+            // O sinal de vida vem do DISPOSITIVO, assinado com a chave dele -- que
+            // o app nao tem. No broker publico nao ha como conferir: e ignorado, e
+            // "dispositivo offline" chega pelo EstadoVaso, que o servico assina.
+            m.topico == t.heartbeat -> if (!publico) {
+                Contratos.conectividade(m.texto)?.let { _dispositivo.value = it } ?: rejeitar()
+            }
+            m.topico == t.resposta -> if (doServico(m, publico)) {
+                Contratos.resposta(m.texto)?.let(::tratarResposta) ?: rejeitar()
+            }
+            m.topico.startsWith(t.base + "/alert/") -> if (doServico(m, publico)) {
+                Contratos.alerta(m.texto)?.let(::guardarAlerta) ?: rejeitar()
+            }
+        }
+    }
+
+    /**
+     * A mensagem foi assinada pelo servico? Assinatura invalida e sempre
+     * descartada; ausente, so no broker publico (no do grupo, a ACL garante
+     * que so o servico publica nesses topicos).
+     */
+    private fun doServico(m: Mensagem, publico: Boolean): Boolean {
+        val chave = material?.chavePublicaServico
+        val autenticidade = if (chave == null) Autenticidade.AUSENTE else Assinaturas.verificarServico(chave, m.topico, m.texto)
+        val aceita = when (autenticidade) {
+            Autenticidade.VALIDA -> true
+            Autenticidade.AUSENTE -> !publico
+            Autenticidade.INVALIDA -> false
+        }
+        if (!aceita) _naoAutenticadas.value += 1
+        return aceita
+    }
+
+    /**
+     * Estado mais velho que o que ja esta na tela e descartado: uma mensagem
+     * antiga, mesmo legitima e assinada, republicada por um terceiro nao pode
+     * voltar a tela para um "tudo certo" do passado.
+     */
+    private fun aceitarEstado(e: EstadoVaso) {
+        val atual = _estadoVaso.value
+        if (atual != null && e.generatedAt.isBefore(atual.generatedAt)) return
+        _estadoVaso.value = e
+    }
+
+    /**
+     * Texto pronto para publicar: assinado com a chave HMAC do app quando o
+     * APK tem uma para este usuario e vaso. No broker publico a assinatura e
+     * obrigatoria -- sem chave, null (nao publica).
+     */
+    private fun paraPublicar(topico: String, texto: String): String? {
+        val config = configAtual ?: return null
+        val chave = material?.chaveDoApp(config.usuario, config.vasoId)
+        return when {
+            chave != null -> Assinaturas.assinarApp(chave, topico, texto)
+            config.publico -> null
+            else -> texto
         }
     }
 
@@ -311,7 +391,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 criadoEm = criadoEm,
                 ttlMs = PEDIDO_TTL_MS
             )
-            val erro = withContext(Dispatchers.IO) { conexao.publicar(conexao.topicos.solicitacao, texto) }
+            val assinado = paraPublicar(conexao.topicos.solicitacao, texto)
+            if (assinado == null) {
+                _pedido.value = Pedido.FalhaEnvio(requestId, criadoEm, SEM_CHAVE)
+                return@launch
+            }
+            val erro = withContext(Dispatchers.IO) { conexao.publicar(conexao.topicos.solicitacao, assinado) }
             // A resposta pode ter chegado antes do PUBACK: nao sobrescrever.
             if (_pedido.value?.requestId != requestId || _pedido.value is Pedido.Concluido) return@launch
             if (erro != null) {
@@ -360,12 +445,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val MAX_ALERTAS = 50
         const val INTERVALO_LUZ_MS = 5_000L
+        const val SEM_CHAVE = "Este APK não tem chave para assinar como este usuário (rode npm run seguranca e recompile)."
     }
 }
 
 sealed interface EstadoHistorico {
     data object Ocioso : EstadoHistorico
     data class Carregando(val horas: Int) : EstadoHistorico
+
+    /** Broker publico: a API do grupo nao se usa sem a senha do grupo. */
+    data object Indisponivel : EstadoHistorico
     data class Erro(val mensagem: String, val dica: String) : EstadoHistorico
     data class Pronto(
         val historico: br.ufg.naodenemagua.contrato.HistoricoVaso,

@@ -4,7 +4,7 @@
 **Integrantes:** 
 - Matheus Vieira Mendes Pacheco
 - Davi Duarte Neco
-- Bárbara Nogueira
+- Bárbara Nogueira (até o Marco 3; não integra mais a equipe — ver [`marco-04/docs/contribuicoes.md`](marco-04/docs/contribuicoes.md))
 
 ---
 

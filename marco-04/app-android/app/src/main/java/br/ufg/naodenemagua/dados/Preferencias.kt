@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import br.ufg.naodenemagua.conexao.ConfigConexao
+import br.ufg.naodenemagua.conexao.ModoBroker
 import kotlinx.coroutines.flow.first
 
 private val Context.armazenamento by preferencesDataStore(name = "conexao")
@@ -25,8 +26,18 @@ class Preferencias(private val contexto: Context) {
             porta = p[PORTA] ?: PADRAO.porta,
             usuario = p[USUARIO] ?: PADRAO.usuario,
             senha = p[SENHA] ?: "",
-            vasoId = p[VASO] ?: PADRAO.vasoId
+            vasoId = p[VASO] ?: PADRAO.vasoId,
+            modo = p[MODO]?.let { m -> ModoBroker.entries.firstOrNull { it.name == m } } ?: ModoBroker.GRUPO
         )
+    }
+
+    /**
+     * Entra direto ao abrir? No broker do grupo, so com a senha lembrada; no
+     * publico (sem senha), se o usuario marcou "lembrar" e nao saiu.
+     */
+    suspend fun entrarDireto(config: ConfigConexao): Boolean {
+        val auto = contexto.armazenamento.data.first()[AUTO] ?: true
+        return auto && (config.publico || config.senha.isNotEmpty())
     }
 
     suspend fun salvar(config: ConfigConexao, lembrarSenha: Boolean) {
@@ -35,12 +46,17 @@ class Preferencias(private val contexto: Context) {
             p[PORTA] = config.porta
             p[USUARIO] = config.usuario
             p[VASO] = config.vasoId
-            if (lembrarSenha) p[SENHA] = config.senha else p.remove(SENHA)
+            p[MODO] = config.modo.name
+            p[AUTO] = lembrarSenha
+            if (lembrarSenha && !config.publico) p[SENHA] = config.senha else if (!lembrarSenha) p.remove(SENHA)
         }
     }
 
     suspend fun esquecerSenha() {
-        contexto.armazenamento.edit { it.remove(SENHA) }
+        contexto.armazenamento.edit {
+            it.remove(SENHA)
+            it[AUTO] = false
+        }
     }
 
     /** A apresentacao (boas-vindas) so aparece na primeira abertura do app. */
@@ -60,5 +76,7 @@ class Preferencias(private val contexto: Context) {
         private val SENHA = stringPreferencesKey("senha")
         private val VASO = stringPreferencesKey("vaso")
         private val BOAS_VINDAS = booleanPreferencesKey("boas_vindas_vista")
+        private val MODO = stringPreferencesKey("modo_broker")
+        private val AUTO = booleanPreferencesKey("entrar_direto")
     }
 }

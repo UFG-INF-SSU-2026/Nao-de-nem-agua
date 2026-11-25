@@ -5,7 +5,7 @@
 
 Teste de integracao da API de historico (HTTPS + leitor_app)
   banco naodenemagua_teste: 10 min de telemetria conhecida + linhas que devem ser excluidas
-  api em https://localhost:65088
+  api em https://localhost:50266
 1. Canal
   ok    HTTP sem TLS nao obtem resposta
   ok    cliente que nao confia na CA do grupo recusa o servidor

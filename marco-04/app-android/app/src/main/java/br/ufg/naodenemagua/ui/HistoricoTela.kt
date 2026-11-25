@@ -87,7 +87,10 @@ fun HistoricoTela(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            FilledTonalIconButton(onClick = aoCarregar, enabled = estado !is EstadoHistorico.Carregando) {
+            FilledTonalIconButton(
+                onClick = aoCarregar,
+                enabled = estado !is EstadoHistorico.Carregando && estado !is EstadoHistorico.Indisponivel
+            ) {
                 Icon(Icones.Atualizar, contentDescription = "Atualizar")
             }
         }
@@ -98,6 +101,11 @@ fun HistoricoTela(
                     Text("Consultando o histórico…", color = CINZA)
                 }
             }
+            EstadoHistorico.Indisponivel -> EstadoVazio(
+                Icones.Cadeado,
+                "Histórico só no broker do grupo",
+                "A API de histórico pede a senha do app, e no broker público nenhuma senha sai do celular. Conecte ao broker do grupo para ver os gráficos."
+            )
             is EstadoHistorico.Erro -> EstadoVazio(Icones.Servidor, estado.mensagem, estado.dica) {
                 Button(onClick = aoCarregar) {
                     Icon(Icones.Atualizar, null, Modifier.size(18.dp))

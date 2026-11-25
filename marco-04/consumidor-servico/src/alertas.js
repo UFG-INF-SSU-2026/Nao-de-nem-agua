@@ -43,7 +43,10 @@ class AlertasCuidado {
         mensagem: message, correlation_id: correlationId || null
       });
     }
-    this.cliente.publish(contrato.topicos(this.cfg).alertaCuidado, JSON.stringify(alerta),
+    // Marco 4: assinado (ECDSA) para o app conferir a origem -- no broker
+    // publico, qualquer um poderia publicar um alerta falso neste topico.
+    const topico = contrato.topicos(this.cfg).alertaCuidado;
+    this.cliente.publish(topico, contrato.textoAssinadoParaApp(topico, alerta),
       { qos: 1, retain: false }, erro => {
         if (erro) this.log.registrar('REJEITADO', `falha de transporte do alerta: ${erro.message}`, alerta);
         else this.log.registrar('TRANSPORTE', `PUBACK do alerta ${alerta.eventId}`, { eventId: alerta.eventId });

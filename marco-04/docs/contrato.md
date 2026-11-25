@@ -7,7 +7,8 @@
 > em `command/atuador` (com `ConfirmacaoAtuacao` em `ack/atuador`). A
 > `LeituraUmidadeSolo` ganhou campos **opcionais** de temperatura do solo e EC;
 > `ConfirmacaoAtuacao.result` ganhou `REJEITADO_SEGURANCA`; `AlertaCuidado`
-> ganhou onze tipos. Detalhes e exemplos em [`marco-04.md`](marco-04.md), §5.
+> ganhou onze tipos (mais três de luz com o app, abaixo). Detalhes e exemplos
+> em [`marco-04.md`](marco-04.md), §5.
 
 O Marco 3 acrescenta [AlertaCuidado v1](../contrato/v1/alerta-cuidado.schema.json)
 em `naodenemagua/v1/vaso/{vasoId}/alert/cuidado` (QoS 1, retain false).
@@ -46,12 +47,18 @@ declarado, não algo que passa despercebido.
 | `naodenemagua/v1/vaso/{vasoId}/status/heartbeat` | dispositivo → serviço | `EstadoConectividade` | 1 | **sim** + LWT |
 | `naodenemagua/v1/vaso/{vasoId}/command/irrigacao` | serviço → dispositivo | `ComandoIrrigacao` | 1 | não |
 | `naodenemagua/v1/vaso/{vasoId}/ack/irrigacao` | dispositivo → serviço | `ConfirmacaoAtuacao` | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/telemetry/ambient` | dispositivo → serviço | `LeituraAmbiente` (Marco 4, DHT22) | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/telemetry/reservoir` | dispositivo → serviço | `NivelReservatorio` (Marco 4, HC-SR04) | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/command/atuador` | serviço → dispositivo | `ComandoAtuador` (Marco 4) | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/ack/atuador` | dispositivo → serviço | `ConfirmacaoAtuacao` (Marco 4) | 1 | não |
+| `naodenemagua/v1/vaso/{vasoId}/alert/cuidado` | serviço → notificador e app | `AlertaCuidado` (Marco 3) | 1 | não |
 | `naodenemagua/v1/vaso/{vasoId}/state/vaso` | serviço → app | `EstadoVaso` (Marco 4) | 1 | **sim** |
 | `naodenemagua/v1/vaso/{vasoId}/app/solicitacao` | app → serviço | `SolicitacaoApp` (Marco 4) | 1 | não |
 | `naodenemagua/v1/vaso/{vasoId}/app/resposta` | serviço → app | `RespostaApp` (Marco 4) | 1 | não |
 | `naodenemagua/v1/vaso/{vasoId}/telemetry/light` | **app** → serviço | `LeituraLuz` (Marco 4, sensor do celular) | 1 | não |
 
-> **Marco 4 — aplicativo.** Os três contratos acima, a identidade `app-vaso-01`
+> **Marco 4 — aplicativo.** Os quatro contratos do app acima (`EstadoVaso`,
+> `SolicitacaoApp`, `RespostaApp` e `LeituraLuz`), a identidade `app-vaso-01`
 > e o papel `app` da ACL estão em [`aplicativo.md`](aplicativo.md). A `LeituraLuz`
 > (o app como produtor), a regra R5 e os alertas `LUZ_INSUFICIENTE`,
 > `LUZ_EXCESSIVA` e `LUZ_NORMALIZADA` estão no §7 de lá. `EstadoVaso` ganhou os

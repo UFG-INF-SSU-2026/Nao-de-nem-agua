@@ -4,8 +4,9 @@
 > processo separado e como ele difere do observador estão em
 > [`marco-04.md`, §6](marco-04.md#6-o-segundo-par-produtor-consumidor-serviço--notificador).
 > Este documento é a especificação detalhada: gatilhos, correlação, caches e
-> TTL. No Marco 4 o mesmo fluxo passou a levar 11 tipos novos de alerta
-> (reservatórios, sensores, umidificador, adubação, falha de irrigação), listados
+> TTL. No Marco 4 o mesmo fluxo passou a levar 14 tipos novos de alerta
+> (reservatórios, sensores, umidificador, adubação, falha de irrigação e, com o
+> app, `LUZ_INSUFICIENTE`, `LUZ_EXCESSIVA` e `LUZ_NORMALIZADA`), listados
 > no schema e em `marco-04.md`; a tabela abaixo cobre os 6 tipos originais.
 
 O serviço passa a consumir telemetria e confirmações e produzir comandos e

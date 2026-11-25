@@ -1026,9 +1026,14 @@ async function secaoMarco4(comandante) {
     conexoes.push(app);
     const estados = [];
     const respostas = [];
+    // Marco 4 (broker publico): toda mensagem do servico para o app sai com
+    // assinatura ECDSA; aqui se confere com a chave publica, como o app faz.
+    const semAssinaturaValida = [];
     app.on('message', (t, b, pk) => {
       try {
-        const p = JSON.parse(b.toString());
+        const texto = b.toString();
+        if ([TA.estado, TA.resposta].includes(t) && !seguranca.verificarAssinaturaServico(t, texto).ok) semAssinaturaValida.push(t);
+        const p = JSON.parse(texto);
         if (t === TA.estado) estados.push({ p, retain: pk.retain, em: Date.now() });
         if (t === TA.resposta) respostas.push(p);
       } catch { /* ignora */ }
@@ -1084,6 +1089,12 @@ async function secaoMarco4(comandante) {
       await aguardar(() => respostas.filter((x) => x.requestId === p.requestId).length > antes, 3000);
       return respostas.filter((x) => x.requestId === p.requestId).pop() || null;
     };
+    // Marco 4: publica o TEXTO exato (ja assinado) e espera a resposta daquele requestId.
+    const solicitarTexto = async (texto, requestId, espera) => {
+      await new Promise((r) => app.publish(TA.solicitacao, texto, { qos: 1 }, r));
+      await aguardar(() => respostas.some((x) => x.requestId === requestId), espera || 3000);
+      return respostas.filter((x) => x.requestId === requestId).pop() || null;
+    };
     const ultimoEstado = () => (estados.length ? estados[estados.length - 1].p : null);
 
     // Sem falha pendente: pedido valido, nada a fazer.
@@ -1129,6 +1140,17 @@ async function secaoMarco4(comandante) {
     verificar('o retry nao repete o efeito', pulsos(mp).length === pulsosAntes);
     verificar('toda RespostaApp publicada respeita o contrato',
       respostas.length > 0 && respostas.every((x) => contrato.validar('RespostaApp', x).ok));
+    verificar('estado e respostas chegam ao app com assinatura ECDSA valida do servico',
+      estados.length > 0 && respostas.length > 0 && semAssinaturaValida.length === 0,
+      semAssinaturaValida.length ? `sem assinatura valida em: ${[...new Set(semAssinaturaValida)].join(', ')}` : '');
+    const chaveApp = seguranca.chaveApp('app-vaso-01').chave;
+    const assinado = { ...reconhecer, requestId: `req-assinado-${Date.now()}`, createdAt: new Date().toISOString() };
+    r = await solicitarTexto(seguranca.assinar(chaveApp, TA.solicitacao, assinado), assinado.requestId);
+    verificar('pedido assinado com a chave HMAC do app e atendido',
+      r && ['NADA_A_RECONHECER', 'EXECUTADA'].includes(r.result), r && JSON.stringify(r));
+    const forjado = { ...reconhecer, requestId: `req-forjado-${Date.now()}`, createdAt: new Date().toISOString() };
+    r = await solicitarTexto(seguranca.assinar('ab'.repeat(32), TA.solicitacao, forjado), forjado.requestId, 1500);
+    verificar('pedido com HMAC de outra chave e descartado sem resposta', r === null, r && JSON.stringify(r));
     sim('m');
     app.end(true);
   }

@@ -208,12 +208,11 @@ cliente.on('error', (e) => log.registrar('REJEITADO', `erro de conexao: ${e.mess
 cliente.on('message', (topico, buffer) => {
   const agora = Date.now();
 
-  // Marco 4: o pedido do app nao vem de dispositivo e nao leva HMAC. A origem
-  // e garantida pelo broker: so a identidade de papel `app` do vaso publica
-  // neste topico, e com o proprio deviceId no payload (seguranca/acl.json).
-  if (topico === topicos.solicitacaoApp) return tratarSolicitacaoApp(buffer, agora);
-  // Marco 4: a LeituraLuz tambem vem do app, com a mesma garantia de origem.
-  if (topico === topicos.telemetriaLuz) return tratarLuz(buffer, agora);
+  // Marco 4: mensagens do APP. No broker do grupo a origem e garantida pelo
+  // broker (so a identidade `app` do vaso publica nestes topicos, acl.json);
+  // no broker publico, pelo HMAC do proprio app (contrato.abrirMensagemDoApp).
+  if (topico === topicos.solicitacaoApp) return tratarSolicitacaoApp(topico, buffer, agora);
+  if (topico === topicos.telemetriaLuz) return tratarLuz(topico, buffer, agora);
 
   // Etapa 1 -- desserializacao tolerante + autenticidade (HMAC do dispositivo).
   // Toda mensagem assinada aqui vem de dispositivo: telemetria, heartbeat
@@ -566,8 +565,8 @@ function tratarAckAtuador(payload, agora) {
 // Marco 4 -- R5: luz medida pelo sensor do celular (o app como produtor)
 // ---------------------------------------------------------------------------
 
-function tratarLuz(buffer, agora) {
-  const bruto = contrato.desserializar(buffer);
+function tratarLuz(topico, buffer, agora) {
+  const bruto = contrato.abrirMensagemDoApp(cfg, topico, buffer);
   if (!bruto.ok) {
     log.registrar('REJEITADO', `LeituraLuz ${bruto.motivo}: ${bruto.detalhe || ''}`);
     return;
@@ -750,7 +749,7 @@ function publicarEstadoVaso(agora, forcar) {
   }
   ultimoEstadoPublicado = chave;
   estadoPublicadoEm = agora;
-  cliente.publish(topicos.estadoVaso, JSON.stringify(ev), { qos: cfg.mqtt.qos, retain: true });
+  cliente.publish(topicos.estadoVaso, contrato.textoAssinadoParaApp(topicos.estadoVaso, ev), { qos: cfg.mqtt.qos, retain: true });
 }
 
 /*
@@ -779,13 +778,15 @@ function responderApp(requestId, action, result, detail, extra) {
     log.registrar('REJEITADO', `RespostaApp gerada viola o contrato: ${valido.detalhe}`);
     return null;
   }
-  cliente.publish(topicos.respostaApp, JSON.stringify(resposta), { qos: cfg.mqtt.qos });
+  cliente.publish(topicos.respostaApp, contrato.textoAssinadoParaApp(topicos.respostaApp, resposta), { qos: cfg.mqtt.qos });
   log.registrar('APP', `${requestId} ${action || '?'} -> ${result}${detail ? ` (${detail})` : ''}`, { resposta });
   return resposta;
 }
 
-function tratarSolicitacaoApp(buffer, agora) {
-  const bruto = contrato.desserializar(buffer);
+function tratarSolicitacaoApp(topico, buffer, agora) {
+  // Sem autenticidade nao ha resposta: responder a um pedido forjado so
+  // ensinaria o atacante. Fica registrado no log.
+  const bruto = contrato.abrirMensagemDoApp(cfg, topico, buffer);
   if (!bruto.ok) {
     log.registrar('REJEITADO', `app ${bruto.motivo}: ${bruto.detalhe || ''}`);
     return;

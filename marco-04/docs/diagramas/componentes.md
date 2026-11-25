@@ -5,8 +5,9 @@ seta é uma publicação ou assinatura MQTT. A base é a do Marco 2; o par
 **serviço → notificador** (Marco 3) aparece em destaque: o serviço **consome**
 telemetria e **produz** comandos e alertas, e o notificador consome os alertas.
 Explicação completa em [`marco-04.md`, §6](../marco-04.md#6-o-segundo-par-produtor-consumidor-serviço--notificador).
-Os sensores e atuadores do Marco 4 usam os mesmos ramos (`telemetry/#`,
-`command/atuador`, `ack/atuador`) e estão descritos no `marco-04.md`.
+Os sensores e atuadores do Marco 4 (sonda 3-em-1, DHT22, HC-SR04, bomba de
+adubo e umidificador) aparecem no dispositivo e usam os ramos `telemetry/#`,
+`command/atuador` e `ack/atuador`; as regras estão descritas no `marco-04.md`.
 O banco **TimescaleDB** (Marco 4) guarda o histórico, o estado das regras e o
 cadastro; o serviço continua decidindo se ele cair. Ver [`persistencia.md`](../persistencia.md).
 
@@ -18,14 +19,18 @@ pelo celular e os pedidos de reconhecimento de falha — e lê o histórico por 
 ```mermaid
 flowchart TB
     subgraph DISP["DISPOSITIVO — gateway-vaso (PRODUTOR)"]
-        POT["Potenciometro GPIO34<br/>entrada substituta do solo"]
-        FW["Firmware<br/>leitura, validacao local,<br/>carimbo de tempo, bootId"]
-        BUF[("Buffer offline<br/>24 leituras<br/>preserva eventTimeMs")]
-        IDEM["Idempotencia + expiracao<br/>na recepcao de comando"]
-        LED(["LED da bomba<br/>GPIO26"])
-        POT --> FW
+        SONDA["Sonda de solo 3-em-1<br/>custom chip: umidade,<br/>temperatura, EC (nutrientes)"]
+        DHT["DHT22 GPIO15<br/>temperatura e umidade do ar"]
+        US["2x HC-SR04<br/>nivel dos reservatorios<br/>de agua e de adubo"]
+        FW["Firmware<br/>leitura, compensacao da EC,<br/>diagnostico da sonda,<br/>carimbo de tempo, bootId, HMAC"]
+        BUF[("Buffer offline<br/>24 leituras de solo<br/>preserva eventTimeMs")]
+        IDEM["Idempotencia + expiracao<br/>+ protecoes fisicas<br/>(REJEITADO_SEGURANCA)"]
+        RELES(["Reles: bomba de agua GPIO26,<br/>bomba de adubo GPIO27,<br/>umidificador GPIO33"])
+        SONDA --> FW
+        DHT --> FW
+        US --> FW
         FW --> BUF
-        IDEM --> LED
+        IDEM --> RELES
     end
 
     subgraph MID["MIDDLEWARE"]
@@ -75,14 +80,14 @@ flowchart TB
         OBS["observador<br/>le tudo, nao valida"]
     end
 
-    FW -- "telemetry/soil" --> BROKER
+    FW -- "telemetry/soil, ambient, reservoir" --> BROKER
     FW -- "status/heartbeat<br/>retained + LWT" --> BROKER
     BUF -. "replayed apos reconexao" .-> BROKER
 
     BROKER --> VAL
-    CMD -- "command/irrigacao" --> BROKER
-    BROKER -- "command/irrigacao" --> IDEM
-    IDEM -- "ack/irrigacao" --> BROKER
+    CMD -- "command/irrigacao,<br/>command/atuador" --> BROKER
+    BROKER -- "command/irrigacao,<br/>command/atuador" --> IDEM
+    IDEM -- "ack/irrigacao,<br/>ack/atuador" --> BROKER
     BROKER --> VAL
 
     ALR == "alert/cuidado<br/>QoS 1, nao retido" ==> BROKER

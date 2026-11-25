@@ -2,7 +2,7 @@
 
 **Projeto:** *Não dê nem água* — cuidado assistido de plantas de interior
 **Disciplina:** Software para Sistemas Ubíquos — UFG
-**Integrantes:** Matheus Vieira Mendes Pacheco, Davi Duarte Neco, Bárbara Nogueira
+**Integrantes:** Matheus Vieira Mendes Pacheco, Davi Duarte Neco (Bárbara Nogueira participou até o Marco 3)
 
 O feedback do Marco 3 pediu **mais sensores** e uma solução **mais complexa**.
 Este marco atende ao pedido **sem trocar a arquitetura**: tudo o que é novo
@@ -174,7 +174,15 @@ nada foi removido, renomeado ou apertado.
 | `ConfirmacaoAtuacao` em `ack/atuador` | mesmo schema, tópico novo | `.../ack/atuador` |
 | `LeituraUmidadeSolo` + `soilTempC`, `ecApparentUsCm`, `ec25UsCm`, `ecValid`, `ecInvalidReason` | campos **opcionais** | inalterado |
 | `ConfirmacaoAtuacao.result` + `REJEITADO_SEGURANCA` | valor novo (como `REJEITADO_ASSINATURA` no Marco 3) | — |
-| `AlertaCuidado.alertType` + 11 tipos | valores novos | inalterado |
+| `AlertaCuidado.alertType` + 11 tipos (+ 3 de luz com o app, abaixo) | valores novos | inalterado |
+| `EstadoVaso`, `SolicitacaoApp`, `RespostaApp` (novos, app) | estado retido e pedido/resposta | `.../state/vaso`, `.../app/solicitacao`, `.../app/resposta` |
+| `LeituraLuz` (novo, app como produtor) | evento novo | `.../telemetry/light` |
+| `HistoricoVaso`, `HistoricoAlertas` (novos) | respostas da API HTTPS | — (não MQTT) |
+| `PerfilCuidado` (novo) | perfil por espécie/grupo/vaso no banco | — (não MQTT) |
+
+Os contratos do app estão em [`aplicativo.md`](aplicativo.md) e o perfil em
+[`persistencia.md`, §5](persistencia.md#5-perfil-de-cuidado-por-espécie-grupo-e-vaso).
+Com eles, a v1 tem **15 schemas** em `contrato/v1/`.
 
 **Por que `command/atuador` e não mais ações em `command/irrigacao`.** O nome do
 tópico é parte da interface: um assinante do Marco 3 que escuta
@@ -294,12 +302,18 @@ Os dois só leem, mas têm papéis diferentes:
 ### Limitações deste fluxo
 
 - **Alerta não é retido.** Notificador desligado perde os avisos daquele
-  período. É uma escolha (aviso velho é ruído); um app real teria histórico.
-- **Alerta sem HMAC.** No broker local só o serviço publica em `alert/` (ACL);
-  no broker público, sem ACL, um terceiro poderia forjar um aviso. O efeito é
-  informativo, não físico (ver `seguranca.md`, limitação 7).
-- **Mão única.** O notificador não responde. Reconhecer uma falha (hoje a tecla
-  `r` do serviço) exigirá um comando do app para o serviço — ver §9.
+  período. É uma escolha (aviso velho é ruído); o histórico dos alertas fica no
+  banco e aparece na aba Histórico do app ([`aplicativo.md`, §8](aplicativo.md#8-histórico-api-somente-leitura-sobre-o-timescaledb)).
+- **Notificador não confere a assinatura dos alertas.** No broker local só o
+  serviço publica em `alert/` (ACL). Desde o app, os alertas saem assinados com
+  ECDSA e o **app** descarta os que não conferem; o notificador de terminal
+  ainda não confere, então no broker público um terceiro poderia mostrar um
+  aviso falso **nele**. O efeito é informativo, não físico (ver `seguranca.md`,
+  limitação 7).
+- **Mão única no notificador.** O notificador não responde. O caminho de volta
+  existe no **app**: o botão *Reconhecer falha* envia `SolicitacaoApp` ao
+  serviço (a tecla `r` do serviço continua como alternativa) — ver §9 e
+  [`aplicativo.md`](aplicativo.md).
 - Relógios do serviço e do notificador precisam estar sincronizados para o TTL.
 
 ### Como ver funcionando
@@ -348,6 +362,10 @@ HC-SR04 durante o pulso.
 ---
 
 ## 8. Limitações declaradas
+
+> Visão consolidada de todas as limitações do projeto (simulações, dados
+> pessoais, segurança, conectividade, desempenho e energia):
+> [`limitacoes.md`](limitacoes.md). Abaixo, as específicas deste marco.
 
 1. **Nenhuma grandeza nova é medida de verdade.** Sonda por custom chip; DHT22 e
    HC-SR04 por slider; no simulador Node, uma física simples declarada.

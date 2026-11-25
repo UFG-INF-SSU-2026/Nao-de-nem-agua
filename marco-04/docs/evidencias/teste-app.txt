@@ -1,5 +1,12 @@
 # Testes unitarios do app Android -- gradlew testDebugUnitTest
-# 2026-11-24T23:27:47.076Z
+# 2026-11-25T03:39:32.000Z
+
+br.ufg.naodenemagua.AssinaturasTest  (5 testes, 0 falhas, 0 erros)
+  ok    mensagemSemAssinaturaEAusente
+  ok    hmacDoAppIgualAoDoServico
+  ok    assinaturaDoServicoGeradaNoNodeConfereNoApp
+  ok    corpoTopicoOuChaveTrocadosInvalidam
+  ok    chavesDoAppLidasDoJsonGerado
 
 br.ufg.naodenemagua.ContratosTest  (8 testes, 0 falhas, 0 erros)
   ok    estadoVasoDeOutraVersaoOuTipoERejeitado
@@ -10,6 +17,10 @@ br.ufg.naodenemagua.ContratosTest  (8 testes, 0 falhas, 0 erros)
   ok    falhasPendentesEOpcional
   ok    falhasDeConexaoViramMotivoAcionavel
   ok    estadoVasoValidoELido
+
+br.ufg.naodenemagua.EnderecosTest  (2 testes, 0 falhas, 0 erros)
+  ok    ipLiteralViraUriComColchetesNoIpv6
+  ok    ipv4VemAntesDoIpv6MantendoAOrdemDoDns
 
 br.ufg.naodenemagua.HistoricoTest  (4 testes, 0 falhas, 0 erros)
   ok    respostaForaDoContratoERejeitada
@@ -32,4 +43,4 @@ br.ufg.naodenemagua.PedidoTest  (5 testes, 0 falhas, 0 erros)
   ok    executadaDizOQueFoiLiberado
   ok    tentarDeNovoReaproveitaOPedidoSoDentroDoPrazo
 
-Resultado: 23 passaram; 0 falharam
+Resultado: 30 passaram; 0 falharam

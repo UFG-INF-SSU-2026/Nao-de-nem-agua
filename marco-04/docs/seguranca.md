@@ -1,8 +1,15 @@
-# Marco 3 — Segurança da fronteira produtor-consumidor
+# Segurança da fronteira produtor-consumidor (Marco 3, ampliada no Marco 4)
 
 **Projeto:** *Não dê nem água* — cuidado assistido de plantas de interior
 **Disciplina:** Software para Sistemas Ubíquos — UFG
-**Integrantes:** Matheus Vieira Mendes Pacheco, Davi Duarte Neco, Bárbara Nogueira
+**Integrantes:** Matheus Vieira Mendes Pacheco, Davi Duarte Neco
+
+> **Marco 4.** As camadas abaixo valem sem alteração para os sensores e
+> atuadores novos (tópicos `telemetry/ambient`, `telemetry/reservoir`,
+> `command/atuador`, `ack/atuador`, todos com HMAC) e para o aplicativo:
+> identidade `app-vaso-01` e papel `app` na ACL (§2.2 e §2.3), assinaturas do
+> app no broker público (§2.5) e API de histórico por HTTPS
+> ([`aplicativo.md`, §8](aplicativo.md#8-histórico-api-somente-leitura-sobre-o-timescaledb)).
 
 O Marco 2 terminou com uma limitação declarada: *"sem TLS e sem autenticação — qualquer um pode assinar e publicar nos tópicos"*. No caminho B, isso queria dizer que **qualquer pessoa na internet podia publicar em `command/irrigacao` e ligar a nossa bomba**. Este documento descreve como o Marco 3 fecha esse buraco em três camadas, mais uma quarta que vale mesmo quando o broker não é confiável.
 
@@ -48,6 +55,7 @@ Cada componente tem uma **identidade**, listada em [`seguranca/acl.json`](../seg
 | `servico-irrigacao` | serviço | consumidor que decide e comanda |
 | `notificador` | notificador | consumidor dos alertas (novo ciclo) |
 | `observador` | observador | segundo consumidor, só leitura |
+| `app-vaso-01` | app (Marco 4) | aplicativo Android do vaso-01 (também na API de histórico) |
 
 - O broker guarda apenas **hash scrypt + sal** de cada senha (`credenciais.json`). Cada cliente guarda a própria senha (`segredos.json`), o que equivale ao provisionamento do dispositivo.
 - A comparação é feita em **tempo constante** (`timingSafeEqual`).
@@ -61,13 +69,14 @@ Aplicada pelo broker a **cada** `PUBLISH` (inclusive à *will message*) e a cada
 
 | Papel | Publica | Assina |
 |---|---|---|
-| gateway | `vaso/{seu vaso}/telemetry/soil`, `.../status/heartbeat`, `.../ack/irrigacao` | `vaso/{seu vaso}/command/irrigacao` |
-| serviço | `vaso/+/command/irrigacao`, `vaso/+/alert/#` | `vaso/+/telemetry/#`, `vaso/+/status/#`, `vaso/+/ack/#` |
+| gateway | `vaso/{seu vaso}/telemetry/soil`, `.../telemetry/ambient`, `.../telemetry/reservoir`, `.../status/heartbeat`, `.../ack/irrigacao`, `.../ack/atuador` | `vaso/{seu vaso}/command/irrigacao`, `.../command/atuador` |
+| serviço | `vaso/+/command/irrigacao`, `vaso/+/command/atuador`, `vaso/+/alert/#`, `vaso/+/state/vaso`, `vaso/+/app/resposta` | `vaso/+/telemetry/#`, `vaso/+/status/#`, `vaso/+/ack/#`, `vaso/+/app/solicitacao` |
 | notificador | — | `vaso/+/alert/#` |
 | observador | — | `naodenemagua/v1/#` |
+| app (Marco 4) | `vaso/{seu vaso}/app/solicitacao`, `.../telemetry/light` | `vaso/{seu vaso}/state/vaso`, `.../alert/#`, `.../telemetry/#`, `.../status/#`, `.../app/resposta` |
 
 - O gateway fica **amarrado ao próprio vaso**: não publica nem assina nada de outro vaso, nem por curinga (`vaso/+/command/#` é negado).
-- **Checagem de `deviceId`:** para gateways, o broker confere se o `deviceId` *dentro do payload* é o da identidade autenticada. O tópico já está amarrado ao vaso; essa checagem fecha a mentira que ainda restava, a de quem diz ter medido.
+- **Checagem de `deviceId`:** para gateways e para o app, o broker confere se o `deviceId` *dentro do payload* é o da identidade autenticada. O tópico já está amarrado ao vaso; essa checagem fecha a mentira que ainda restava, a de quem diz ter medido.
 - **Publicação negada derruba a conexão.** O MQTT 3.1.1 não tem resposta "publicação negada", e um cliente que publica fora da ACL está se comportando mal. **Assinatura negada** apenas devolve SUBACK `0x80` para aquele filtro e a sessão continua.
 
 ### 2.4 Autenticidade da mensagem — HMAC-SHA256 (caminhos A e B)
@@ -94,6 +103,41 @@ sig = HMAC-SHA256(chave, topico + "\n" + corpo)      corpo = o JSON sem o campo 
 
 ---
 
+### 2.5 O app no broker público — HMAC do app e ECDSA do serviço (Marco 4)
+
+No caminho A, o app herda as camadas do broker: TLS com a CA do grupo, senha própria (`app-vaso-01`) e ACL. No caminho B (o do ESP32 no Wokwi) nada disso existe, e o HMAC dos dispositivos não cobre o app. Sem mais nada, qualquer pessoa no HiveMQ poderia mandar um "reconhecer falha" que destrava a irrigação, injetar leituras de luz ou publicar um estado falso que o app mostraria como "tudo certo". Por isso as mensagens do app passam a ser assinadas **nos dois sentidos**:
+
+| Sentido | Mensagens | Assinatura | Quem tem a chave |
+|---|---|---|---|
+| app → serviço | `SolicitacaoApp`, `LeituraLuz` | HMAC-SHA256, campo `sig` | o app e o serviço (chave **própria** do app, nunca a do ESP32) |
+| serviço → app | `EstadoVaso`, `AlertaCuidado`, `RespostaApp` | ECDSA P-256 / SHA-256, campo `assinatura` (DER em hex) | só o serviço assina; o app tem **apenas a chave pública** |
+
+O formato é o mesmo do Marco 3: a assinatura é o último campo do JSON e cobre `tópico + "\n" + corpo`, o texto exato. Copiar a mensagem para outro tópico ou outro vaso a invalida.
+
+**Por que ECDSA na volta, e não HMAC.** Para conferir um HMAC é preciso ter a chave, e quem tem a chave também consegue assinar. Como a chave do app vai dentro do APK, um HMAC do serviço permitiria que qualquer pessoa que abrisse o APK forjasse o estado do vaso. Com ECDSA, o APK leva só a chave pública, que confere mas não assina. Essa é a separação de papéis que a limitação 4 abaixo pedia, aplicada ao app.
+
+**Regras de aceitação**
+
+| | Broker do grupo (A) | Broker público (B) |
+|---|---|---|
+| Serviço recebe pedido ou luz **sem** `sig` | aceita (a ACL garante a origem) | **recusa** (`ASSINATURA_AUSENTE`) |
+| Serviço recebe `sig` inválido, de outro app ou de outro vaso | recusa | recusa |
+| App recebe estado, alerta ou resposta **sem** `assinatura` | aceita (a ACL garante a origem) | **descarta** e conta em "Sem assinatura válida do serviço" |
+| App recebe `assinatura` inválida | descarta | descarta |
+
+Pedido forjado não recebe resposta: responder só ensinaria o atacante. O registro fica no log do serviço.
+
+**Outros cuidados no app em modo público**
+
+- TLS com as CAs do próprio Android e verificação do nome do servidor. **Nenhuma senha** é enviada ao broker de terceiros.
+- Um `EstadoVaso` mais velho que o já exibido é descartado, mesmo assinado. Assim, um estado legítimo antigo republicado por um terceiro não volta à tela.
+- O sinal de vida (`status/heartbeat`) vem assinado com a chave do **dispositivo**, que o app não tem. No modo público ele é ignorado, e o estado "dispositivo offline" chega pelo `EstadoVaso`, que o serviço assina depois de conferir o HMAC do ESP32.
+- O histórico fica indisponível: a API pede a senha do app, que não sai do celular nesse modo.
+
+**Onde ficam as chaves.** `npm run seguranca` gera, por máquina e fora do Git, `certs/servico-assinatura.key` (privada, só o serviço lê), `certs/servico-assinatura.pub` e `certs/chaves-app.json`. O build do app copia **só** a `.pub` e a chave do app para o APK (`app/build.gradle.kts`). Rodar o comando numa máquina que já tem o resto do material gera apenas o que falta, sem trocar senhas nem certificados; depois disso é preciso recompilar o app.
+
+---
+
 ## 3. Onde cada camada vive
 
 ```
@@ -113,6 +157,8 @@ sig = HMAC-SHA256(chave, topico + "\n" + corpo)      corpo = o JSON sem o campo 
 | Usuário/senha | ✅ | ❌ (broker de terceiros) |
 | ACL + checagem de `deviceId` | ✅ | ❌ (broker de terceiros) |
 | HMAC por mensagem | ✅ | ✅ |
+| App: HMAC próprio nos pedidos e na luz (Marco 4) | ✅ se vier | ✅ obrigatório |
+| App: ECDSA do serviço em estado, alertas e respostas (Marco 4) | ✅ se vier (sempre vem) | ✅ obrigatório |
 
 ---
 
@@ -156,7 +202,9 @@ E pelo teclado do simulador: `a` (leitura sem assinatura), `g` (adulterada depoi
 4. **Chave simétrica.** Quem tem a chave do dispositivo pode assinar tanto como dispositivo quanto como serviço. Separar os papéis exigiria assinatura assimétrica (ECDSA) ou mTLS com certificados por dispositivo, fora do escopo deste marco.
 5. **Repetição de telemetria.** Uma leitura legítima reenviada é barrada pela deduplicação por `eventId`, mas o conjunto de ids vistos é limitado (500) e fica em memória. Comandos têm proteção própria (`idempotencyKey` + prazo no relógio do dispositivo).
 6. **Sem revogação.** Para trocar uma credencial é preciso rodar `npm run seguranca -- --forcar` e reiniciar os componentes. Não há rotação automática.
-7. **Alertas sem assinatura.** No broker local, só o serviço publica em `alert/` (ACL). No broker público, sem ACL, um terceiro poderia publicar um alerta falso para o notificador. O efeito é informativo (um aviso no terminal) e não físico, mas fica registrado. A correção seria uma chave HMAC própria do serviço.
+7. **Notificador ainda sem conferir assinatura.** Desde o Marco 4, os alertas saem assinados pelo serviço (ECDSA) e o **app** descarta os que não conferem. O notificador de terminal ainda não confere: no broker público, um terceiro poderia mostrar um alerta falso nele. O efeito é só informativo.
+8. **Chave do app dentro do APK.** Como a do ESP32 no sketch, a chave HMAC do app pode ser extraída do APK. Quem a extrair consegue se passar pelo app (fazer pedidos e mandar luz para aquele vaso), mas não pelo ESP32 nem pelo serviço: a chave de cada um é diferente, e a do serviço nem está no APK.
+9. **Repetição no broker público.** Pedidos têm `requestId` único e validade de 30 s, e leituras de luz são deduplicadas por `eventId`. Um alerta legítimo reenviado é descartado pelo `eventId`. Um estado legítimo reenviado só é aceito se for o mais recente.
 
 ---
 

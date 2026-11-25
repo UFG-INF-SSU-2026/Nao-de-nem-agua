@@ -19,6 +19,14 @@ import javax.net.ssl.TrustManagerFactory
  */
 object TlsDoGrupo {
 
+    /**
+     * Fabrica de sockets para o modo escolhido: no broker do grupo, so a CA do
+     * grupo; no publico, as CAs do proprio Android (a do HiveMQ e publica).
+     */
+    fun fabricaPara(contexto: Context, modo: ModoBroker): SSLSocketFactory =
+        if (modo == ModoBroker.PUBLICO) SSLSocketFactory.getDefault() as SSLSocketFactory
+        else fabricaDeSockets(contexto)
+
     fun fabricaDeSockets(contexto: Context): SSLSocketFactory {
         val certificados = CertificateFactory.getInstance("X.509")
         val ca = contexto.resources.openRawResource(R.raw.ca_naodenemagua).use {

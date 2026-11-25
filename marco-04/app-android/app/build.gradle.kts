@@ -9,36 +9,57 @@ plugins {
  * (`npm run seguranca`, fora do Git): por isso ele e copiado a cada build para
  * um recurso gerado (res/raw/ca_naodenemagua.crt), em vez de versionado aqui.
  * A chave da CA (ca.key) nunca entra no app.
+ *
+ * Broker publico (caminho B): tambem entram a chave PUBLICA de assinatura do
+ * servico (o app confere estado, alertas e respostas; nao consegue assinar) e
+ * a chave HMAC do proprio app (assina pedidos e luz). A chave privada do
+ * servico (servico-assinatura.key) nunca entra no app.
  */
-abstract class CopiarCaDoGrupo : DefaultTask() {
+abstract class CopiarMaterialDoGrupo : DefaultTask() {
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val ca: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val chavePublicaServico: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val chavesApp: ConfigurableFileCollection
 
     @get:OutputDirectory
     abstract val saida: DirectoryProperty
 
     @TaskAction
     fun copiar() {
-        val origem = ca.singleFile
-        if (!origem.exists()) {
-            throw GradleException(
-                "CA do grupo nao encontrada em ${origem.path}. Rode `npm run seguranca` na pasta marco-04 antes de compilar o app."
-            )
-        }
         val raw = saida.get().dir("raw").asFile
         raw.mkdirs()
-        origem.copyTo(raw.resolve("ca_naodenemagua.crt"), overwrite = true)
+        listOf(
+            ca to "ca_naodenemagua.crt",
+            chavePublicaServico to "servico_assinatura.pem",
+            chavesApp to "chaves_app.json"
+        ).forEach { (arquivos, destino) ->
+            val origem = arquivos.singleFile
+            if (!origem.exists()) {
+                throw GradleException(
+                    "${origem.name} nao encontrado em ${origem.parent}. Rode `npm run seguranca` na pasta marco-04 antes de compilar o app."
+                )
+            }
+            origem.copyTo(raw.resolve(destino), overwrite = true)
+        }
     }
 }
 
-val copiarCaDoGrupo = tasks.register<CopiarCaDoGrupo>("copiarCaDoGrupo") {
+val copiarMaterialDoGrupo = tasks.register<CopiarMaterialDoGrupo>("copiarMaterialDoGrupo") {
     ca.from(rootProject.file("../seguranca/certs/ca.crt"))
+    chavePublicaServico.from(rootProject.file("../seguranca/certs/servico-assinatura.pub"))
+    chavesApp.from(rootProject.file("../seguranca/certs/chaves-app.json"))
 }
 
 androidComponents {
     onVariants { variante ->
-        variante.sources.res?.addGeneratedSourceDirectory(copiarCaDoGrupo, CopiarCaDoGrupo::saida)
+        variante.sources.res?.addGeneratedSourceDirectory(copiarMaterialDoGrupo, CopiarMaterialDoGrupo::saida)
     }
 }
 

@@ -19,6 +19,11 @@
     }
   },
   "properties": {
+    "assinatura": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{120,150}$",
+      "description": "Marco 4: assinatura ECDSA P-256/SHA-256 do servico (DER em hex) sobre topico + \"\\n\" + corpo. Sempre o ULTIMO campo do JSON. O app confere com a chave publica do servico; no broker publico, mensagem sem assinatura valida e descartada."
+    },
     "schemaVersion": { "const": 1 },
     "eventType": { "const": "EstadoVaso" },
     "producerId": { "const": "servico-irrigacao" },

@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import br.ufg.naodenemagua.conexao.ConfigConexao
 import br.ufg.naodenemagua.conexao.EstadoConexao
+import br.ufg.naodenemagua.conexao.MotivoFalha
 import br.ufg.naodenemagua.contrato.EstadoConectividade
 import br.ufg.naodenemagua.contrato.EstadoVaso
 
@@ -61,8 +62,12 @@ data class DadosPainel(
     val luz: DadosLuz,
     val historico: EstadoHistorico,
     val periodoHoras: Int,
-    val config: ConfigConexao? = null
-)
+    val config: ConfigConexao? = null,
+    /** Mensagens descartadas por falta de assinatura valida do servico. */
+    val naoAutenticadas: Int = 0
+) {
+    val publico: Boolean get() = config?.publico == true
+}
 
 /** Sensor do celular: o que se mede aqui e o que o servico concluiu. */
 data class DadosLuz(
@@ -101,7 +106,7 @@ fun PainelTela(dados: DadosPainel, acoes: AcoesPainel, modifier: Modifier = Modi
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = { Cabecalho(dados.config?.vasoId, dados.conexao) },
+        topBar = { Cabecalho(dados.config?.vasoId, dados.conexao, dados.publico) },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest, tonalElevation = 0.dp) {
                 Aba.entries.forEach { a ->
@@ -142,7 +147,7 @@ fun PainelTela(dados: DadosPainel, acoes: AcoesPainel, modifier: Modifier = Modi
 // -----------------------------------------------------------------------------
 
 @Composable
-private fun Cabecalho(vasoId: String?, conexao: EstadoConexao) {
+private fun Cabecalho(vasoId: String?, conexao: EstadoConexao, publico: Boolean) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -155,7 +160,12 @@ private fun Cabecalho(vasoId: String?, conexao: EstadoConexao) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text("Não dê nem água", style = MaterialTheme.typography.titleLarge)
-            if (vasoId != null) Text(vasoId, style = MaterialTheme.typography.bodySmall, color = CINZA)
+            if (vasoId != null) {
+                Text(
+                    if (publico) "$vasoId · broker público" else vasoId,
+                    style = MaterialTheme.typography.bodySmall, color = CINZA
+                )
+            }
         }
         PilulaConexao(conexao)
     }
@@ -188,13 +198,20 @@ private fun AbaVaso(dados: DadosPainel, acoes: AcoesPainel, agora: Long, verCone
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         when (conexao) {
-            is EstadoConexao.Falha -> CartaoFalhaConexao(conexao, acoes)
+            is EstadoConexao.Falha -> CartaoFalhaConexao(conexao, acoes, dados.publico)
             EstadoConexao.Desconectado, EstadoConexao.Conectando -> Conectando()
             is EstadoConexao.Reconectando -> Aviso(
                 "Conexão perdida há ${duracao(agora - conexao.desdeMs)} — reconectando sozinho. (${conexao.causa})",
                 Sinal.ATENCAO
             )
             is EstadoConexao.Conectado -> Unit
+        }
+        if (dados.naoAutenticadas > 0) {
+            Aviso(
+                "${dados.naoAutenticadas} mensagem(ns) sem a assinatura do serviço foram descartadas" +
+                    if (dados.publico) " — alguém está publicando nos tópicos deste vaso no broker público." else ".",
+                Sinal.ERRO
+            )
         }
         if (conexao is EstadoConexao.Conectado || conexao is EstadoConexao.Reconectando) {
             val estado = dados.estado
@@ -209,7 +226,7 @@ private fun AbaVaso(dados: DadosPainel, acoes: AcoesPainel, agora: Long, verCone
                 CartaoAdubacao(estado)
             }
             CartaoLuz(dados.luz, estado, agora, conectado, acoes.alternarMedicaoLuz)
-            CartaoDispositivo(dados.dispositivo, conectado)
+            CartaoDispositivo(dados.dispositivo, conectado, dados.publico, estado)
         }
         if (dados.assinaturasNegadas.isNotEmpty()) {
             Aviso("O broker recusou algumas assinaturas. Detalhes na aba Conexão.", Sinal.ERRO)
@@ -231,10 +248,19 @@ private fun Conectando() {
 }
 
 @Composable
-private fun CartaoFalhaConexao(conexao: EstadoConexao.Falha, acoes: AcoesPainel) {
+private fun CartaoFalhaConexao(conexao: EstadoConexao.Falha, acoes: AcoesPainel, publico: Boolean) {
+    // As dicas padrao falam do broker do grupo (adb reverse, CA do grupo); no
+    // publico o que costuma faltar e a internet do celular ou a porta 8883.
+    val dica = if (!publico) conexao.motivo.dica else when (conexao.motivo) {
+        MotivoFalha.INALCANCAVEL, MotivoFalha.TEMPO_ESGOTADO ->
+            "Confira a internet do celular. Algumas redes bloqueiam a porta 8883: se continuar, tente outra rede (Wi-Fi ou dados)."
+        MotivoFalha.CERTIFICADO, MotivoFalha.NOME_SERVIDOR ->
+            "O certificado apresentado não é o do broker público. A rede pode estar interceptando a conexão."
+        else -> conexao.motivo.dica
+    }
     CartaoSecao("Não foi possível conectar", Icones.Wifi, sinal = Sinal.ERRO) {
         Text(conexao.motivo.mensagem, style = MaterialTheme.typography.titleSmall, color = VERMELHO)
-        if (conexao.motivo.dica.isNotEmpty()) Text(conexao.motivo.dica, style = MaterialTheme.typography.bodyMedium)
+        if (dica.isNotEmpty()) Text(dica, style = MaterialTheme.typography.bodyMedium)
         if (conexao.detalhe.isNotEmpty()) {
             Text(conexao.detalhe, style = MaterialTheme.typography.bodySmall, color = CINZA)
         }
@@ -586,7 +612,27 @@ private fun CartaoLuz(luz: DadosLuz, estado: EstadoVaso?, agora: Long, conectado
 }
 
 @Composable
-private fun CartaoDispositivo(dispositivo: EstadoConectividade?, conectado: Boolean) {
+private fun CartaoDispositivo(dispositivo: EstadoConectividade?, conectado: Boolean, publico: Boolean, estado: EstadoVaso?) {
+    if (publico) {
+        // No broker publico o sinal de vida do ESP32 nao e verificavel pelo app
+        // (vem assinado com a chave do dispositivo); quem o confere e o servico,
+        // e o resultado chega no EstadoVaso assinado.
+        val offline = estado?.soloEstado == "DISPOSITIVO_OFFLINE"
+        CartaoSecao("Dispositivo do vaso", Icones.Chip, acao = {
+            when {
+                !conectado || estado == null -> Pilula("Sem notícia", Sinal.NEUTRO, icone = Icones.Relogio)
+                offline -> Pilula("Offline", Sinal.ERRO, icone = Icones.Erro)
+                else -> Pilula("Respondendo", Sinal.OK)
+            }
+        }) {
+            Text(
+                "No broker público, quem confere o sinal de vida do ESP32 é o serviço (pelo HMAC do dispositivo). " +
+                    "O app mostra o que o serviço concluiu, numa mensagem assinada por ele.",
+                style = MaterialTheme.typography.bodySmall, color = CINZA
+            )
+        }
+        return
+    }
     CartaoSecao("Dispositivo do vaso", Icones.Chip, acao = {
         when {
             !conectado -> Pilula("Sem broker", Sinal.NEUTRO, icone = Icones.Wifi)
